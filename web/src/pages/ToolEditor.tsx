@@ -22,7 +22,6 @@ import { useNavigate, useParams } from "react-router-dom";
 import dayjs from "dayjs";
 import { diffLines } from "diff";
 import { ApiError } from "../api/client";
-import { listExecutions, type Execution } from "../api/executions";
 import {
   copyTool,
   createTool,
@@ -43,7 +42,7 @@ import {
   type ToolVersion,
 } from "../api/tools";
 import ExecuteToolModal from "../components/ExecuteToolModal";
-import ExecutionStatusTag from "../components/ExecutionStatusTag";
+import ExecutionTable from "../components/ExecutionTable";
 import { useAuthStore } from "../stores/auth";
 
 interface ParamForm {
@@ -109,11 +108,6 @@ export default function ToolEditor() {
     queryKey: ["tool-versions", id],
     queryFn: () => listVersions(id!),
     enabled: !!id,
-  });
-  const { data: history, isLoading: historyLoading } = useQuery({
-    queryKey: ["tool-executions", id],
-    queryFn: () => listExecutions({ tool_id: id, page_size: 100 }),
-    enabled: !!id && tab === "history",
   });
   const { data: refs, isLoading: refsLoading } = useQuery({
     queryKey: ["tool-references", id],
@@ -395,45 +389,10 @@ export default function ToolEditor() {
     </Form>
   );
 
-  const historyTab = (
-    <Table<Execution>
-      rowKey="id"
-      loading={historyLoading}
-      dataSource={history?.items ?? []}
-      pagination={{ pageSize: 20, showSizeChanger: false }}
-      onRow={(r) => ({ onClick: () => navigate(`/executions/${r.id}`), style: { cursor: "pointer" } })}
-      columns={[
-        {
-          title: "执行",
-          render: (_, r) => <a onClick={(e) => { e.stopPropagation(); navigate(`/executions/${r.id}`); }}>{r.name || r.id}</a>,
-        },
-        {
-          title: "类型",
-          dataIndex: "kind",
-          width: 90,
-          render: (v: string) => <Tag>{v}</Tag>,
-        },
-        {
-          title: "状态",
-          dataIndex: "status",
-          width: 120,
-          render: (v: string) => <ExecutionStatusTag status={v} />,
-        },
-        {
-          title: "主机",
-          width: 100,
-          render: (_, r) => `${r.host_success}/${r.host_total}`,
-        },
-        { title: "操作人", dataIndex: "created_by", width: 140 },
-        {
-          title: "开始时间",
-          dataIndex: "created_at",
-          width: 170,
-          render: (v: number) => dayjs(v).format("YYYY-MM-DD HH:mm:ss"),
-        },
-        { title: "摘要", dataIndex: "error_summary", ellipsis: true },
-      ]}
-    />
+  const historyTab = id ? (
+    <ExecutionTable kind="tool" refID={id} />
+  ) : (
+    <Card>保存后可查看执行历史</Card>
   );
 
   const versionsTab = (
@@ -592,7 +551,7 @@ export default function ToolEditor() {
         onChange={setTab}
         items={[
           { key: "definition", label: "定义", children: definitionTab },
-          { key: "history", label: "执行历史", children: !isNew ? historyTab : <Card>保存后可查看执行历史</Card> },
+          { key: "history", label: "执行历史", children: historyTab },
           { key: "versions", label: "版本列表", children: !isNew ? versionsTab : <Card>保存后可查看版本</Card> },
           { key: "references", label: "引用对象", children: !isNew ? referencesTab : <Card>保存后可查看引用</Card> },
         ]}
