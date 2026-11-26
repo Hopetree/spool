@@ -73,6 +73,7 @@ type Version struct {
 	ContentHash    string  `json:"content_hash"`
 	ChangeNote     string  `json:"change_note"`
 	CreatedBy      string  `json:"created_by"`
+	CreatedByName  string  `json:"created_by_name"`
 	CreatedAt      int64   `json:"created_at"`
 }
 

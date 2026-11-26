@@ -128,7 +128,15 @@ func listExecutionsHandler(d Deps) gin.HandlerFunc {
 		pageArgs = append(pageArgs, pageSize, (page-1)*pageSize)
 		items := []exec.Execution{}
 		if err := d.Store.DB.SelectContext(c.Request.Context(), &items,
-			`SELECT e.* FROM executions e WHERE `+cond+` ORDER BY e.created_at DESC LIMIT ? OFFSET ?`, pageArgs...); err != nil {
+			`SELECT e.*, COALESCE(u.username, NULLIF(u.display_name, ''),
+				(SELECT a.username_snapshot FROM audit_logs a WHERE a.resource_id = e.id
+				 AND a.action IN ('execution.start', 'execution.rerun') AND a.username_snapshot <> ''
+				 ORDER BY a.ts DESC LIMIT 1),
+				(SELECT a.username_snapshot FROM audit_logs a WHERE a.action = 'schedule.trigger'
+				 AND a.summary_json LIKE '%"execution_id":"' || e.id || '"%' AND a.username_snapshot <> ''
+				 ORDER BY a.ts DESC LIMIT 1), e.created_by) AS created_by_name
+			FROM executions e LEFT JOIN users u ON u.id = e.created_by
+			WHERE `+cond+` ORDER BY e.created_at DESC LIMIT ? OFFSET ?`, pageArgs...); err != nil {
 			fail(c, http.StatusInternalServerError, "internal_error", "查询失败", nil)
 			return
 		}

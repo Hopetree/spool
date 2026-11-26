@@ -413,7 +413,11 @@ export default function ToolEditor() {
           ),
         },
         { title: "说明", dataIndex: "change_note" },
-        { title: "创建人", dataIndex: "created_by", width: 140 },
+        {
+          title: "创建人",
+          width: 160,
+          render: (_, r) => r.created_by_name || r.created_by || "—",
+        },
         {
           title: "创建时间",
           dataIndex: "created_at",
@@ -513,9 +517,11 @@ export default function ToolEditor() {
         <Typography.Title level={4} style={{ margin: 0 }}>
           {isNew ? "新建工具" : detail?.name ?? "工具"}
         </Typography.Title>
-        {!isNew && <Tag>{detail?.category || "默认"}</Tag>}
-        {detail && <Tag>v{detail.version_no}</Tag>}
-        {detail && !detail.enabled && <Tag color="orange">已停用</Tag>}
+        {!isNew && (
+          <Typography.Text type="secondary">
+            {detail?.category || "默认"} · v{detail?.version_no ?? "—"}
+          </Typography.Text>
+        )}
         {!isNew && canRun && <Button onClick={() => setExecOpen(true)}>执行</Button>}
         {!isNew && isAdmin && (
           <Button loading={clone.isPending} onClick={() => clone.mutate()}>

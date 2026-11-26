@@ -46,6 +46,7 @@ type Execution struct {
 	ErrorSummary       string `db:"error_summary" json:"error_summary"`
 	CancelRequested    bool   `db:"cancel_requested" json:"cancel_requested"`
 	CreatedBy          string `db:"created_by" json:"created_by"`
+	CreatedByName      string `db:"created_by_name" json:"created_by_name"`
 	CreatedAt          int64  `db:"created_at" json:"created_at"`
 	StartedAt          *int64 `db:"started_at" json:"started_at"`
 	FinishedAt         *int64 `db:"finished_at" json:"finished_at"`
@@ -229,7 +230,14 @@ func (e *Engine) nowMs() int64 { return time.Now().UnixMilli() }
 // GetExecution loads one execution.
 func (e *Engine) GetExecution(ctx context.Context, id string) (*Execution, error) {
 	var ex Execution
-	err := e.db.GetContext(ctx, &ex, `SELECT * FROM executions WHERE id = ?`, id)
+	err := e.db.GetContext(ctx, &ex, `SELECT e.*, COALESCE(u.username, NULLIF(u.display_name, ''),
+		(SELECT a.username_snapshot FROM audit_logs a WHERE a.resource_id = e.id
+		 AND a.action IN ('execution.start', 'execution.rerun') AND a.username_snapshot <> ''
+		 ORDER BY a.ts DESC LIMIT 1),
+		(SELECT a.username_snapshot FROM audit_logs a WHERE a.action = 'schedule.trigger'
+		 AND a.summary_json LIKE '%"execution_id":"' || e.id || '"%' AND a.username_snapshot <> ''
+		 ORDER BY a.ts DESC LIMIT 1), e.created_by) AS created_by_name
+		FROM executions e LEFT JOIN users u ON u.id = e.created_by WHERE e.id = ?`, id)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}

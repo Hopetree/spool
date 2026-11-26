@@ -46,6 +46,7 @@ export interface ToolVersion {
   content_hash: string;
   change_note: string;
   created_by: string;
+  created_by_name?: string;
   created_at: number;
 }
 

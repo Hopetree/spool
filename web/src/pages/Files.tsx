@@ -286,7 +286,11 @@ export default function Files() {
         },
         { title: "大小", dataIndex: "size_bytes", width: 100, render: (v: number) => bytes(v) },
         { title: "主机数", dataIndex: "target_total", width: 90 },
-        { title: "操作人", dataIndex: "created_by", width: 140 },
+        {
+          title: "操作人",
+          width: 160,
+          render: (_, r) => r.created_by_name || r.created_by || "—",
+        },
         {
           title: "时间",
           dataIndex: "created_at",

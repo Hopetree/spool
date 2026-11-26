@@ -41,15 +41,16 @@ type Config struct {
 
 // Transfer is the aggregate view of one file operation.
 type Transfer struct {
-	ID          string `json:"id"`
-	Direction   string `json:"direction"`
-	FileName    string `json:"file_name"`
-	SizeBytes   int64  `json:"size_bytes"`
-	TargetTotal int    `json:"target_total"`
-	Status      string `json:"status"`
-	CreatedBy   string `json:"created_by"`
-	CreatedAt   int64  `json:"created_at"`
-	FinishedAt  *int64 `json:"finished_at"`
+	ID            string `json:"id"`
+	Direction     string `json:"direction"`
+	FileName      string `json:"file_name"`
+	SizeBytes     int64  `json:"size_bytes"`
+	TargetTotal   int    `json:"target_total"`
+	Status        string `json:"status"`
+	CreatedBy     string `json:"created_by"`
+	CreatedByName string `json:"created_by_name"`
+	CreatedAt     int64  `json:"created_at"`
+	FinishedAt    *int64 `json:"finished_at"`
 }
 
 // Target is one host's progress within a transfer.
@@ -67,15 +68,16 @@ type Target struct {
 }
 
 type transferRow struct {
-	ID          string `db:"id"`
-	Direction   string `db:"direction"`
-	FileName    string `db:"file_name"`
-	SizeBytes   int64  `db:"size_bytes"`
-	TargetTotal int    `db:"target_total"`
-	Status      string `db:"status"`
-	CreatedBy   string `db:"created_by"`
-	CreatedAt   int64  `db:"created_at"`
-	FinishedAt  *int64 `db:"finished_at"`
+	ID            string `db:"id"`
+	Direction     string `db:"direction"`
+	FileName      string `db:"file_name"`
+	SizeBytes     int64  `db:"size_bytes"`
+	TargetTotal   int    `db:"target_total"`
+	Status        string `db:"status"`
+	CreatedBy     string `db:"created_by"`
+	CreatedByName string `db:"created_by_name"`
+	CreatedAt     int64  `db:"created_at"`
+	FinishedAt    *int64 `db:"finished_at"`
 }
 
 type targetRow struct {
@@ -95,7 +97,7 @@ func (r transferRow) view() Transfer {
 	return Transfer{
 		ID: r.ID, Direction: r.Direction, FileName: r.FileName, SizeBytes: r.SizeBytes,
 		TargetTotal: r.TargetTotal, Status: r.Status, CreatedBy: r.CreatedBy,
-		CreatedAt: r.CreatedAt, FinishedAt: r.FinishedAt,
+		CreatedByName: r.CreatedByName, CreatedAt: r.CreatedAt, FinishedAt: r.FinishedAt,
 	}
 }
 
@@ -288,7 +290,11 @@ func (s *Service) CreateUpload(ctx context.Context, req UploadRequest) (*Transfe
 
 func (s *Service) getTransfer(id string) (*Transfer, error) {
 	var r transferRow
-	err := s.db.Get(&r, `SELECT * FROM transfers WHERE id = ?`, id)
+	err := s.db.Get(&r, `SELECT t.*, COALESCE(u.username, NULLIF(u.display_name, ''),
+		(SELECT a.username_snapshot FROM audit_logs a WHERE a.resource_id = t.id
+		 AND a.action IN ('transfer.upload', 'transfer.download') AND a.username_snapshot <> ''
+		 ORDER BY a.ts DESC LIMIT 1), t.created_by) AS created_by_name
+		FROM transfers t LEFT JOIN users u ON u.id = t.created_by WHERE t.id = ?`, id)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -302,7 +308,11 @@ func (s *Service) getTransfer(id string) (*Transfer, error) {
 // Get returns a transfer with its targets.
 func (s *Service) Get(ctx context.Context, id string) (*Transfer, []Target, error) {
 	var r transferRow
-	err := s.db.GetContext(ctx, &r, `SELECT * FROM transfers WHERE id = ?`, id)
+	err := s.db.GetContext(ctx, &r, `SELECT t.*, COALESCE(u.username, NULLIF(u.display_name, ''),
+		(SELECT a.username_snapshot FROM audit_logs a WHERE a.resource_id = t.id
+		 AND a.action IN ('transfer.upload', 'transfer.download') AND a.username_snapshot <> ''
+		 ORDER BY a.ts DESC LIMIT 1), t.created_by) AS created_by_name
+		FROM transfers t LEFT JOIN users u ON u.id = t.created_by WHERE t.id = ?`, id)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil, ErrNotFound
 	}
@@ -334,8 +344,12 @@ func (s *Service) List(ctx context.Context, page, pageSize int) ([]Transfer, int
 		return nil, 0, err
 	}
 	rows := []transferRow{}
-	if err := s.db.SelectContext(ctx, &rows, `SELECT * FROM transfers ORDER BY created_at DESC LIMIT ? OFFSET ?`,
-		pageSize, (page-1)*pageSize); err != nil {
+	if err := s.db.SelectContext(ctx, &rows, `SELECT t.*, COALESCE(u.username, NULLIF(u.display_name, ''),
+		(SELECT a.username_snapshot FROM audit_logs a WHERE a.resource_id = t.id
+		 AND a.action IN ('transfer.upload', 'transfer.download') AND a.username_snapshot <> ''
+		 ORDER BY a.ts DESC LIMIT 1), t.created_by) AS created_by_name
+		FROM transfers t LEFT JOIN users u ON u.id = t.created_by
+		ORDER BY t.created_at DESC LIMIT ? OFFSET ?`, pageSize, (page-1)*pageSize); err != nil {
 		return nil, 0, err
 	}
 	out := make([]Transfer, 0, len(rows))

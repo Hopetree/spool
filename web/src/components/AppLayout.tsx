@@ -78,14 +78,29 @@ export default function AppLayout() {
 
   const items: MenuProps["items"] = [
     { key: "/", icon: <HomeOutlined />, label: <Link to="/">工作台</Link> },
-    { key: "grp-hosts", icon: <CloudServerOutlined />, label: "主机与凭据", children: hostChildren },
-    { key: "grp-tools", icon: <ToolOutlined />, label: "工具", children: toolChildren },
-    { key: "grp-flows", icon: <DeploymentUnitOutlined />, label: "流程", children: flowChildren },
-    { key: "grp-automation", icon: <ClockCircleOutlined />, label: "自动化", children: automationChildren },
+    {
+      key: "grp-hosts",
+      icon: <CloudServerOutlined />,
+      label: <Link to="/hosts">主机与凭据</Link>,
+      children: hostChildren,
+    },
+    { key: "grp-tools", icon: <ToolOutlined />, label: <Link to="/tools">工具</Link>, children: toolChildren },
+    { key: "grp-flows", icon: <DeploymentUnitOutlined />, label: <Link to="/flows">流程</Link>, children: flowChildren },
+    {
+      key: "grp-automation",
+      icon: <ClockCircleOutlined />,
+      label: <Link to="/schedules">自动化</Link>,
+      children: automationChildren,
+    },
     { key: "/files", icon: <FolderOpenOutlined />, label: <Link to="/files">文件分发</Link> },
   ];
   if (isAdmin) {
-    items.push({ key: "grp-system", icon: <SettingOutlined />, label: "系统管理", children: systemChildren });
+    items.push({
+      key: "grp-system",
+      icon: <SettingOutlined />,
+      label: <Link to="/users">系统管理</Link>,
+      children: systemChildren,
+    });
   }
 
   return (

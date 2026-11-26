@@ -46,6 +46,7 @@ type versionRow struct {
 	ContentHash    string `db:"content_hash"`
 	ChangeNote     string `db:"change_note"`
 	CreatedBy      string `db:"created_by"`
+	CreatedByName  string `db:"created_by_name"`
 	CreatedAt      int64  `db:"created_at"`
 }
 
@@ -70,6 +71,7 @@ func (r versionRow) toVersion() (Version, error) {
 		ContentHash:    r.ContentHash,
 		ChangeNote:     r.ChangeNote,
 		CreatedBy:      r.CreatedBy,
+		CreatedByName:  r.CreatedByName,
 		CreatedAt:      r.CreatedAt,
 	}, nil
 }
@@ -170,7 +172,8 @@ func (s *Service) Get(ctx context.Context, id string) (*Detail, error) {
 		return nil, fmt.Errorf("get tool: %w", err)
 	}
 	var v versionRow
-	if err := s.db.GetContext(ctx, &v, `SELECT * FROM tool_versions WHERE id = ?`, t.CurrentVersionID); err != nil {
+	if err := s.db.GetContext(ctx, &v, `SELECT v.*, COALESCE(u.username, NULLIF(u.display_name, ''), v.created_by) AS created_by_name
+		FROM tool_versions v LEFT JOIN users u ON u.id = v.created_by WHERE v.id = ?`, t.CurrentVersionID); err != nil {
 		return nil, fmt.Errorf("get current version: %w", err)
 	}
 	version, err := v.toVersion()
@@ -337,7 +340,9 @@ func (s *Service) Versions(ctx context.Context, toolID string) ([]Version, error
 		return nil, err
 	}
 	rows := []versionRow{}
-	if err := s.db.SelectContext(ctx, &rows, `SELECT * FROM tool_versions WHERE tool_id = ? ORDER BY version_no DESC`, toolID); err != nil {
+	if err := s.db.SelectContext(ctx, &rows, `SELECT v.*, COALESCE(u.username, NULLIF(u.display_name, ''), v.created_by) AS created_by_name
+		FROM tool_versions v LEFT JOIN users u ON u.id = v.created_by
+		WHERE v.tool_id = ? ORDER BY v.version_no DESC`, toolID); err != nil {
 		return nil, fmt.Errorf("list versions: %w", err)
 	}
 	out := make([]Version, 0, len(rows))
@@ -354,7 +359,9 @@ func (s *Service) Versions(ctx context.Context, toolID string) ([]Version, error
 // Version returns one specific version.
 func (s *Service) Version(ctx context.Context, toolID string, versionNo int) (*Version, error) {
 	var r versionRow
-	err := s.db.GetContext(ctx, &r, `SELECT * FROM tool_versions WHERE tool_id = ? AND version_no = ?`, toolID, versionNo)
+	err := s.db.GetContext(ctx, &r, `SELECT v.*, COALESCE(u.username, NULLIF(u.display_name, ''), v.created_by) AS created_by_name
+		FROM tool_versions v LEFT JOIN users u ON u.id = v.created_by
+		WHERE v.tool_id = ? AND v.version_no = ?`, toolID, versionNo)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}

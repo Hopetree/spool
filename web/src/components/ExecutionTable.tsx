@@ -86,7 +86,11 @@ export default function ExecutionTable({ kind, refID, showFilters, pageSize = 20
             width: 100,
             render: (_, r) => `${r.host_success}/${r.host_total}`,
           },
-          { title: "操作人", dataIndex: "created_by", width: 140 },
+          {
+            title: "操作人",
+            width: 160,
+            render: (_, r) => r.created_by_name || r.created_by || "—",
+          },
           {
             title: "开始时间",
             dataIndex: "created_at",

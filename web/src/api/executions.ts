@@ -26,6 +26,7 @@ export interface Execution {
   error_summary: string;
   cancel_requested: boolean;
   created_by: string;
+  created_by_name?: string;
   created_at: number;
   started_at: number | null;
   finished_at: number | null;

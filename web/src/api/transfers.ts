@@ -8,6 +8,7 @@ export interface Transfer {
   target_total: number;
   status: string;
   created_by: string;
+  created_by_name?: string;
   created_at: number;
   finished_at: number | null;
 }

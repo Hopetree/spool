@@ -135,7 +135,7 @@ export default function ExecutionDetail() {
             size="small"
             items={[
               { key: "id", label: "执行 ID", children: data.id },
-              { key: "operator", label: "操作人", children: data.created_by || "—" },
+              { key: "operator", label: "操作人", children: data.created_by_name || data.created_by || "—" },
               { key: "source", label: "来源", children: data.source },
               { key: "created", label: "创建时间", children: dayjs(data.created_at).format("YYYY-MM-DD HH:mm:ss") },
               { key: "started", label: "开始时间", children: data.started_at ? dayjs(data.started_at).format("HH:mm:ss") : "—" },
