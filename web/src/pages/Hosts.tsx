@@ -201,6 +201,7 @@ export default function Hosts() {
 
       <Table<Host>
         rowKey="id"
+        size="small"
         loading={isLoading}
         dataSource={hosts}
         pagination={{ current: page, pageSize: 20, onChange: setPage, showSizeChanger: false }}

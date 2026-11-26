@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { Checkbox, Space, Tag } from "antd";
+import { Checkbox, Space } from "antd";
 import { listEvents, type ExecutionEvent, type ExecutionStatus } from "../api/executions";
+import ExecutionStatusTag from "./ExecutionStatusTag";
 
 interface Line {
   seq: number;
@@ -75,7 +76,7 @@ export default function LogViewer({
   return (
     <div>
       <Space style={{ marginBottom: 8 }}>
-        <Tag color={status === "success" ? "green" : status === "running" ? "blue" : "default"}>{status ?? "—"}</Tag>
+        <ExecutionStatusTag status={status ?? ""} />
         <Checkbox checked={follow} onChange={(e) => setFollow(e.target.checked)}>
           自动滚动
         </Checkbox>

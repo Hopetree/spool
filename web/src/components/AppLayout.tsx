@@ -1,7 +1,9 @@
+import { useEffect, useState } from "react";
 import {
   ClockCircleOutlined,
   CloudServerOutlined,
   DeploymentUnitOutlined,
+  DownOutlined,
   FolderOpenOutlined,
   HomeOutlined,
   LockOutlined,
@@ -10,14 +12,12 @@ import {
   ToolOutlined,
   UserOutlined,
 } from "@ant-design/icons";
-import { Avatar, Dropdown, Layout, Menu, Space, Typography } from "antd";
+import { Avatar, Dropdown, Layout, Menu } from "antd";
 import type { MenuProps } from "antd";
 import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useAuthStore } from "../stores/auth";
 
-const { Header, Sider, Content } = Layout;
-
-const groupKeys = ["grp-hosts", "grp-tools", "grp-flows", "grp-automation", "grp-system"];
+const { Sider, Content } = Layout;
 
 function selectedKey(pathname: string): string {
   if (pathname === "/") return "/";
@@ -46,12 +46,39 @@ function selectedKey(pathname: string): string {
   return "";
 }
 
+const groupOfKey: Record<string, string> = {
+  "/hosts": "grp-hosts",
+  "/credentials": "grp-hosts",
+  "/tools": "grp-tools",
+  "/tools/executions": "grp-tools",
+  "/flows": "grp-flows",
+  "/flows/executions": "grp-flows",
+  "/schedules": "grp-automation",
+  "/adhoc": "grp-automation",
+  "/adhoc/history": "grp-automation",
+  "/users": "grp-system",
+  "/channels": "grp-system",
+  "/audit": "grp-system",
+};
+
 export default function AppLayout() {
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
   const navigate = useNavigate();
   const location = useLocation();
   const isAdmin = user?.role === "admin";
+
+  const current = selectedKey(location.pathname);
+  const activeGroup = groupOfKey[current];
+  const [openKeys, setOpenKeys] = useState<string[]>(() => (activeGroup ? [activeGroup] : []));
+
+  // Only keep the section of the current page open by default; the user can
+  // still expand other sections manually.
+  useEffect(() => {
+    if (activeGroup) {
+      setOpenKeys((keys) => (keys.includes(activeGroup) ? keys : [...keys, activeGroup]));
+    }
+  }, [activeGroup]);
 
   const hostChildren: MenuProps["items"] = [{ key: "/hosts", label: <Link to="/hosts">主机列表</Link> }];
   if (isAdmin) {
@@ -105,41 +132,41 @@ export default function AppLayout() {
 
   return (
     <Layout style={{ minHeight: "100vh" }}>
-      <Sider theme="dark" width={220}>
-        <div
-          style={{
-            height: 56,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            color: "#fff",
-            fontSize: 20,
-            fontWeight: 600,
-            letterSpacing: 3,
-          }}
-        >
-          SPOOL
-        </div>
-        <Menu
-          theme="dark"
-          mode="inline"
-          selectedKeys={[selectedKey(location.pathname)]}
-          defaultOpenKeys={groupKeys}
-          items={items}
-        />
-      </Sider>
-      <Layout>
-        <Header
-          style={{
-            background: "#fff",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            padding: "0 24px",
-          }}
-        >
-          <Typography.Text type="secondary">内网运维平台</Typography.Text>
+      <Sider
+        theme="dark"
+        width={220}
+        style={{ height: "100vh", position: "sticky", top: 0, overflow: "hidden" }}
+      >
+        <div style={{ height: "100vh", display: "flex", flexDirection: "column" }}>
+          <Link
+            to="/"
+            style={{
+              height: 56,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              color: "#fff",
+              fontSize: 20,
+              fontWeight: 600,
+              letterSpacing: 3,
+              flex: "none",
+            }}
+          >
+            SPOOL
+          </Link>
+          <div style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
+            <Menu
+              theme="dark"
+              mode="inline"
+              selectedKeys={[current]}
+              openKeys={openKeys}
+              onOpenChange={(keys) => setOpenKeys(keys)}
+              items={items}
+            />
+          </div>
           <Dropdown
+            placement="topLeft"
+            trigger={["click"]}
             menu={{
               items: [
                 {
@@ -160,13 +187,29 @@ export default function AppLayout() {
               ],
             }}
           >
-            <Space style={{ cursor: "pointer" }}>
+            <div
+              style={{
+                flex: "none",
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                padding: "12px 16px",
+                borderTop: "1px solid rgba(255,255,255,0.08)",
+                color: "rgba(255,255,255,0.85)",
+                cursor: "pointer",
+              }}
+            >
               <Avatar size="small" icon={<UserOutlined />} />
-              {user?.display_name || user?.username}
-            </Space>
+              <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {user?.display_name || user?.username}
+              </span>
+              <DownOutlined style={{ fontSize: 10, color: "rgba(255,255,255,0.45)" }} />
+            </div>
           </Dropdown>
-        </Header>
-        <Content style={{ margin: 24 }}>
+        </div>
+      </Sider>
+      <Layout>
+        <Content style={{ padding: 16 }}>
           <Outlet />
         </Content>
       </Layout>

@@ -76,6 +76,7 @@ export default function Channels() {
       </Space>
       <Table<Channel>
         rowKey="id"
+        size="small"
         loading={isLoading}
         dataSource={data}
         columns={[

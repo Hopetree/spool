@@ -31,6 +31,7 @@ export default function Audit() {
       </Space>
       <Table<AuditRecord>
         rowKey="id"
+        size="small"
         loading={isLoading}
         dataSource={data?.items ?? []}
         pagination={{

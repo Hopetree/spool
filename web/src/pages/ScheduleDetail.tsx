@@ -129,7 +129,9 @@ export default function ScheduleDetail() {
                 label: "执行对象",
                 children: (
                   <Space size={4}>
-                    <Tag color={detail.target_kind === "flow" ? "purple" : "geekblue"}>{detail.target_kind}</Tag>
+                    <Tag color={detail.target_kind === "flow" ? "purple" : "geekblue"}>
+                      {detail.target_kind === "flow" ? "流程" : "工具"}
+                    </Tag>
                     {detail.target_name || detail.target_ref_id}
                   </Space>
                 ),

@@ -11,8 +11,21 @@ interface Props {
   refID?: string;
   scheduleID?: string;
   showFilters?: boolean;
+  showKind?: boolean;
   pageSize?: number;
 }
+
+const statusOptions = [
+  { value: "queued", label: "排队中" },
+  { value: "running", label: "运行中" },
+  { value: "success", label: "成功" },
+  { value: "partial", label: "部分成功" },
+  { value: "failed", label: "失败" },
+  { value: "cancelled", label: "已取消" },
+  { value: "interrupted", label: "已中断" },
+];
+
+const kindLabels: Record<string, string> = { tool: "工具", flow: "流程", adhoc: "临时命令" };
 
 function duration(ex: Execution): string {
   if (!ex.started_at) return "—";
@@ -21,7 +34,7 @@ function duration(ex: Execution): string {
   return `${Math.floor(sec / 60)}m ${sec % 60}s`;
 }
 
-export default function ExecutionTable({ kind, refID, scheduleID, showFilters, pageSize = 20 }: Props) {
+export default function ExecutionTable({ kind, refID, scheduleID, showFilters, showKind, pageSize = 20 }: Props) {
   const navigate = useNavigate();
   const [status, setStatus] = useState<string>();
   const [keyword, setKeyword] = useState("");
@@ -54,16 +67,14 @@ export default function ExecutionTable({ kind, refID, scheduleID, showFilters, p
             style={{ width: 140 }}
             value={status}
             onChange={setStatus}
-            options={["queued", "running", "success", "partial", "failed", "cancelled", "interrupted"].map((s) => ({
-              value: s,
-              label: s,
-            }))}
+            options={statusOptions}
           />
           <Input.Search allowClear placeholder="名称关键字" style={{ width: 240 }} onSearch={setKeyword} />
         </Space>
       )}
       <Table<Execution>
         rowKey="id"
+        size="small"
         loading={isLoading}
         dataSource={data?.items ?? []}
         pagination={{ pageSize, showSizeChanger: false }}
@@ -77,6 +88,16 @@ export default function ExecutionTable({ kind, refID, scheduleID, showFilters, p
               </Link>
             ),
           },
+          ...(showKind
+            ? [
+                {
+                  title: "类型",
+                  dataIndex: "kind",
+                  width: 100,
+                  render: (v: string) => kindLabels[v] ?? v,
+                },
+              ]
+            : []),
           {
             title: "状态",
             dataIndex: "status",

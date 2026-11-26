@@ -204,27 +204,34 @@ export default function Tools() {
 
         <Table<ToolSummary>
           rowKey="id"
+          size="small"
           loading={isLoading}
           dataSource={tools}
           columns={[
-            { title: "名称", render: (_, r) => <Link to={`/tools/${r.id}`}>{r.name}</Link> },
+            {
+              title: "名称",
+              width: 180,
+              ellipsis: true,
+              render: (_, r) => <Link to={`/tools/${r.id}`}>{r.name}</Link>,
+            },
             {
               title: "分类",
               dataIndex: "category",
+              width: 140,
+              ellipsis: true,
               render: (v: string) => (v ? <Tag>{v}</Tag> : <Tag>默认</Tag>),
             },
             {
               title: "类型",
               dataIndex: "type",
-              width: 90,
+              width: 80,
               render: (v: string) => <Tag color={v === "python" ? "blue" : "geekblue"}>{v}</Tag>,
             },
-            { title: "版本", dataIndex: "version_no", width: 80, render: (v: number) => `v${v}` },
-            { title: "参数", dataIndex: "param_count", width: 70 },
+            { title: "版本", dataIndex: "version_no", width: 70, render: (v: number) => `v${v}` },
             {
               title: "状态",
               dataIndex: "enabled",
-              width: 90,
+              width: 80,
               render: (v: boolean, r) => (
                 <Switch
                   checked={v}
@@ -237,13 +244,14 @@ export default function Tools() {
             {
               title: "更新时间",
               dataIndex: "updated_at",
-              width: 160,
+              width: 150,
               render: (v: number) => dayjs(v).format("YYYY-MM-DD HH:mm"),
             },
             {
               title: "操作",
+              width: 220,
               render: (_, r) => (
-                <Space wrap>
+                <Space size={4} wrap={false}>
                   {canRun && (
                     <Button size="small" onClick={() => setExecTool(r)}>
                       执行

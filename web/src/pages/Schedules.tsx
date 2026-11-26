@@ -86,6 +86,7 @@ export default function Schedules() {
 
       <Table<Schedule>
         rowKey="id"
+        size="small"
         loading={isLoading}
         dataSource={items}
         columns={[

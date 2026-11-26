@@ -62,6 +62,7 @@ export default function Groups() {
       </Space>
       <Table<HostGroup>
         rowKey="id"
+        size="small"
         loading={isLoading}
         dataSource={data}
         columns={[

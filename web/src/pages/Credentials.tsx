@@ -73,6 +73,7 @@ export default function Credentials() {
       </Space>
       <Table<Credential>
         rowKey="id"
+        size="small"
         loading={isLoading}
         dataSource={data}
         columns={[

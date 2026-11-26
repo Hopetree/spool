@@ -90,6 +90,7 @@ export default function Users() {
       </Space>
       <Table<UserView>
         rowKey="id"
+        size="small"
         loading={isLoading}
         dataSource={data}
         columns={[
@@ -117,8 +118,9 @@ export default function Users() {
           },
           {
             title: "操作",
+            width: 270,
             render: (_, r) => (
-              <Space wrap>
+              <Space size={4} wrap={false}>
                 <Button
                   size="small"
                   onClick={() => {

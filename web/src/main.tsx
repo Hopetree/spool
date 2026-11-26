@@ -17,7 +17,11 @@ const queryClient = new QueryClient({
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    <ConfigProvider locale={zhCN} theme={{ token: { colorPrimary: "#1677ff" } }}>
+    <ConfigProvider
+      locale={zhCN}
+      theme={{ token: { colorPrimary: "#1677ff" } }}
+      button={{ autoInsertSpace: false }}
+    >
       <AntApp>
         <QueryClientProvider client={queryClient}>
           <BrowserRouter>

@@ -136,7 +136,11 @@ export default function ExecutionDetail() {
             items={[
               { key: "id", label: "执行 ID", children: data.id },
               { key: "operator", label: "操作人", children: data.created_by_name || data.created_by || "—" },
-              { key: "source", label: "来源", children: data.source },
+              {
+                key: "source",
+                label: "来源",
+                children: data.source === "manual" ? "手动" : data.source === "schedule" ? "定时任务" : data.source,
+              },
               { key: "created", label: "创建时间", children: dayjs(data.created_at).format("YYYY-MM-DD HH:mm:ss") },
               { key: "started", label: "开始时间", children: data.started_at ? dayjs(data.started_at).format("HH:mm:ss") : "—" },
               { key: "duration", label: "耗时", children: duration(data.started_at, data.finished_at) },
@@ -273,7 +277,6 @@ export default function ExecutionDetail() {
                   >
                     <Space>
                       <Typography.Text strong>{currentHost.host_name}</Typography.Text>
-                      <ExecutionStatusTag status={currentHost.status} />
                       {currentHost.error_message && (
                         <Typography.Text type="danger" style={{ fontSize: 12 }}>
                           {currentHost.error_message}
