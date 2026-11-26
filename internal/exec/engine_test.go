@@ -170,7 +170,7 @@ func toolPlan(name, content string) Plan {
 	return BuildToolPlan(name, ToolVersionSnapshot{
 		ToolID: "tool-1", VersionID: "ver-1", VersionNo: 1,
 		Type: "shell", Interpreter: "/bin/bash", Content: content, TimeoutSec: 5,
-	}, nil)
+	}, nil, nil)
 }
 
 func waitTerminal(t *testing.T, e *Engine, id string) *Execution {

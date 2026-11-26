@@ -34,10 +34,13 @@ type Step struct {
 	RetryCount     int               `json:"retry_count,omitempty"`
 	RetryDelaySec  int               `json:"retry_delay_sec,omitempty"`
 	Params         map[string]string `json:"params,omitempty"`
+	// SensitiveParams maps env var names to keys in the execution's encrypted
+	// sensitive value map. Plan JSON never contains the secret values.
+	SensitiveParams map[string]string `json:"sensitive_params,omitempty"`
 }
 
 // BuildToolPlan turns one tool version into a single-stage plan.
-func BuildToolPlan(name string, v ToolVersionSnapshot, params map[string]string) Plan {
+func BuildToolPlan(name string, v ToolVersionSnapshot, params, sensitiveParams map[string]string) Plan {
 	return Plan{
 		Kind: "tool",
 		Name: name,
@@ -45,19 +48,20 @@ func BuildToolPlan(name string, v ToolVersionSnapshot, params map[string]string)
 			Index: 1,
 			Name:  "执行",
 			Steps: []Step{{
-				Index:          1,
-				Name:           name,
-				ToolID:         v.ToolID,
-				ToolVersionID:  v.VersionID,
-				ToolVersionNo:  v.VersionNo,
-				ContentHash:    v.ContentHash,
-				Type:           v.Type,
-				Interpreter:    v.Interpreter,
-				Content:        v.Content,
-				PrepareCommand: v.PrepareCommand,
-				Sudo:           v.Sudo,
-				TimeoutSec:     v.TimeoutSec,
-				Params:         params,
+				Index:           1,
+				Name:            name,
+				ToolID:          v.ToolID,
+				ToolVersionID:   v.VersionID,
+				ToolVersionNo:   v.VersionNo,
+				ContentHash:     v.ContentHash,
+				Type:            v.Type,
+				Interpreter:     v.Interpreter,
+				Content:         v.Content,
+				PrepareCommand:  v.PrepareCommand,
+				Sudo:            v.Sudo,
+				TimeoutSec:      v.TimeoutSec,
+				Params:          params,
+				SensitiveParams: sensitiveParams,
 			}},
 		}},
 	}

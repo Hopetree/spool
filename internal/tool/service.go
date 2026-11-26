@@ -105,6 +105,7 @@ func (r toolRow) toTool() Tool {
 		Sudo:        r.Sudo,
 		ContentHash: r.ContentHash,
 		ParamCount:  len(params),
+		Params:      params,
 		CreatedAt:   r.CreatedAt,
 		UpdatedAt:   r.UpdatedAt,
 	}
@@ -309,7 +310,11 @@ func (s *Service) Delete(ctx context.Context, id string) error {
 	if err != nil {
 		return fmt.Errorf("check history: %w", err)
 	}
-	if history > 0 {
+	var flowRefs int
+	if err := s.db.GetContext(ctx, &flowRefs, `SELECT count(*) FROM flow_steps WHERE tool_id = ?`, id); err != nil {
+		return fmt.Errorf("check flow refs: %w", err)
+	}
+	if history > 0 || flowRefs > 0 {
 		return ErrHasHistory
 	}
 	if _, err := s.db.ExecContext(ctx, `DELETE FROM tools WHERE id = ?`, id); err != nil {

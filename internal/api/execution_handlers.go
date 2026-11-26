@@ -183,7 +183,11 @@ func createExecutionHandler(d Deps) gin.HandlerFunc {
 			return
 		}
 		plain, sensitive := splitSensitive(detail.Version.Params, values)
-		plan := exec.BuildToolPlan(detail.Name, toolSnapshot(detail), plain)
+		sensitiveRefs := make(map[string]string, len(sensitive))
+		for k := range sensitive {
+			sensitiveRefs[k] = k
+		}
+		plan := exec.BuildToolPlan(detail.Name, toolSnapshot(detail), plain, sensitiveRefs)
 		u := currentUser(c)
 		ex, err := d.Engine.Submit(c.Request.Context(), exec.SubmitRequest{
 			Kind: "tool", Source: "manual", RefID: detail.ID, Name: detail.Name,
@@ -284,6 +288,10 @@ func rerunExecutionHandler(d Deps) gin.HandlerFunc {
 			return
 		}
 		plain, sensitive := splitSensitive(detail.Version.Params, values)
+		sensitiveRefs := make(map[string]string, len(sensitive))
+		for k := range sensitive {
+			sensitiveRefs[k] = k
+		}
 		hosts, _ := d.Engine.HostRuns(ctx, old.ID)
 		hostIDs := make([]string, 0, len(hosts))
 		for _, h := range hosts {
@@ -294,7 +302,7 @@ func rerunExecutionHandler(d Deps) gin.HandlerFunc {
 		u := currentUser(c)
 		ex, err := d.Engine.Submit(ctx, exec.SubmitRequest{
 			Kind: "tool", Source: "manual", RefID: detail.ID, Name: detail.Name,
-			Plan:   exec.BuildToolPlan(detail.Name, toolSnapshot(detail), plain),
+			Plan:   exec.BuildToolPlan(detail.Name, toolSnapshot(detail), plain, sensitiveRefs),
 			Params: plain, Sensitive: sensitive, HostIDs: hostIDs, ActorID: u.ID,
 		})
 		if err != nil {

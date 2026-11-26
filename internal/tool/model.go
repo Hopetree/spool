@@ -13,7 +13,7 @@ import (
 // Errors returned by the tool service.
 var (
 	ErrNotFound   = errors.New("tool not found")
-	ErrHasHistory = errors.New("tool has execution history; disable it instead")
+	ErrHasHistory = errors.New("tool is used by flows or execution history; disable it instead")
 )
 
 // ValidationError marks invalid input.
@@ -39,19 +39,20 @@ type Param struct {
 
 // Tool is the list/summary view.
 type Tool struct {
-	ID          string `json:"id"`
-	Name        string `json:"name"`
-	Description string `json:"description"`
-	Enabled     bool   `json:"enabled"`
-	VersionNo   int    `json:"version_no"`
-	Type        string `json:"type"`
-	Interpreter string `json:"interpreter"`
-	TimeoutSec  int    `json:"timeout_sec"`
-	Sudo        bool   `json:"sudo"`
-	ContentHash string `json:"content_hash"`
-	ParamCount  int    `json:"param_count"`
-	CreatedAt   int64  `json:"created_at"`
-	UpdatedAt   int64  `json:"updated_at"`
+	ID          string  `json:"id"`
+	Name        string  `json:"name"`
+	Description string  `json:"description"`
+	Enabled     bool    `json:"enabled"`
+	VersionNo   int     `json:"version_no"`
+	Type        string  `json:"type"`
+	Interpreter string  `json:"interpreter"`
+	TimeoutSec  int     `json:"timeout_sec"`
+	Sudo        bool    `json:"sudo"`
+	ContentHash string  `json:"content_hash"`
+	ParamCount  int     `json:"param_count"`
+	Params      []Param `json:"params"`
+	CreatedAt   int64   `json:"created_at"`
+	UpdatedAt   int64   `json:"updated_at"`
 }
 
 // Version is an immutable tool revision.

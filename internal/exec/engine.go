@@ -587,6 +587,11 @@ func (e *Engine) runHost(ctx context.Context, log *EventLog, ex Execution, hr Ho
 	}
 
 	hostCtx, cancel := context.WithCancel(ctx)
+	if plan.MaxDurationSec > 0 {
+		var cancelTimeout context.CancelFunc
+		hostCtx, cancelTimeout = context.WithTimeout(hostCtx, time.Duration(plan.MaxDurationSec)*time.Second)
+		defer cancelTimeout()
+	}
 	e.mu.Lock()
 	e.hostCancels[hr.ID] = cancel
 	e.mu.Unlock()
@@ -620,7 +625,20 @@ func (e *Engine) runHost(ctx context.Context, log *EventLog, ex Execution, hr Ho
 
 	failedEarlier := false
 	statuses := make([]string, 0, len(steps))
-	for _, stageCfg := range plan.Stages {
+	var flowTimedOut bool
+	for stageIdx, stageCfg := range plan.Stages {
+		if hostCtx.Err() != nil {
+			flowTimedOut = errors.Is(hostCtx.Err(), context.DeadlineExceeded)
+			for _, rest := range plan.Stages[stageIdx:] {
+				for _, sr := range steps {
+					if sr.StageIdx == rest.Index && sr.Status == "queued" {
+						e.finishStep(log, sr, "skipped", "skipped", nil, "流程超时或已取消，未执行", 0, 0, false, 0)
+						statuses = append(statuses, "skipped")
+					}
+				}
+			}
+			break
+		}
 		stageSteps := make([]*StepRun, 0)
 		for _, sr := range steps {
 			if sr.StageIdx == stageCfg.Index {
@@ -665,6 +683,11 @@ func (e *Engine) runHost(ctx context.Context, log *EventLog, ex Execution, hr Ho
 			reason, msg = sr.FailureReason, sr.ErrorMessage
 			break
 		}
+	}
+	if flowTimedOut {
+		status = "failed"
+		reason = "flow_timeout"
+		msg = "流程执行超时"
 	}
 	e.finishHost(log, hr.ID, status, reason, msg)
 }
@@ -826,12 +849,14 @@ func (e *Engine) runStep(ctx context.Context, log *EventLog, ex Execution, hr Ho
 		return
 	}
 
-	env := make(map[string]string, len(st.Params)+len(sensitive)+6)
+	env := make(map[string]string, len(st.Params)+len(st.SensitiveParams)+6)
 	for k, v := range st.Params {
 		env[k] = v
 	}
-	for k, v := range sensitive {
-		env[k] = v
+	for envName, sourceKey := range st.SensitiveParams {
+		if v, ok := sensitive[sourceKey]; ok {
+			env[envName] = v
+		}
 	}
 	env["SPOOL_EXECUTION_ID"] = ex.ID
 	env["SPOOL_HOST_RUN_ID"] = hr.ID
@@ -903,6 +928,10 @@ func (e *Engine) runStep(ctx context.Context, log *EventLog, ex Execution, hr Ho
 		case ctx.Err() != nil:
 			e.cleanup(runner, dir, st.Sudo)
 			ev, written, truncated, dropped := sink.stats()
+			if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+				e.finishStep(log, sr, "failed", "timeout", nil, "流程执行超时", ev, written, truncated, dropped)
+				return
+			}
 			cs := e.cancelStatus()
 			e.finishStep(log, sr, cs, cs, nil, "执行已取消", ev, written, truncated, dropped)
 			return
