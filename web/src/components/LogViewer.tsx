@@ -13,10 +13,12 @@ export default function LogViewer({
   executionId,
   active,
   hostRunID,
+  stepRunID,
 }: {
   executionId: string;
   active: boolean;
   hostRunID?: string;
+  stepRunID?: string;
 }) {
   const [lines, setLines] = useState<Line[]>([]);
   const [status, setStatus] = useState<ExecutionStatus>();
@@ -38,7 +40,7 @@ export default function LogViewer({
 
     const load = async () => {
       try {
-        const res = await listEvents(executionId, 0, 20000, hostRunID);
+        const res = await listEvents(executionId, 0, 20000, hostRunID, stepRunID);
         if (cancelled) return;
         setStatus(res.status);
         setLines(
@@ -49,7 +51,8 @@ export default function LogViewer({
         if (!active) return;
         const last = res.items.length ? res.items[res.items.length - 1].seq : 0;
         const suffix = hostRunID ? `&host_run=${hostRunID}` : "";
-        source = new EventSource(`/api/v1/executions/${executionId}/stream?after_seq=${last}${suffix}`);
+        const stepSuffix = stepRunID ? `&step_run=${stepRunID}` : "";
+        source = new EventSource(`/api/v1/executions/${executionId}/stream?after_seq=${last}${suffix}${stepSuffix}`);
         source.addEventListener("log", (e) => append(JSON.parse((e as MessageEvent).data) as ExecutionEvent));
         source.addEventListener("state", (e) => {
           const ev = JSON.parse((e as MessageEvent).data) as ExecutionEvent;
@@ -65,7 +68,7 @@ export default function LogViewer({
       cancelled = true;
       source?.close();
     };
-  }, [executionId, active, hostRunID]);
+  }, [executionId, active, hostRunID, stepRunID]);
 
   useEffect(() => {
     if (follow && boxRef.current) {

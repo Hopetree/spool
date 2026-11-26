@@ -448,7 +448,10 @@ func (s *Service) Compile(ctx context.Context, id string, values map[string]stri
 	graph := &exec.GraphPlan{}
 	for _, node := range detail.Nodes {
 		if node.Type == NodeStart {
-			graph.Nodes = append(graph.Nodes, exec.GraphNode{ID: node.ID, Type: NodeStart, Name: "开始"})
+			graph.Nodes = append(graph.Nodes, exec.GraphNode{
+				ID: node.ID, Type: NodeStart, Name: "开始",
+				X: node.X, Y: node.Y,
+			})
 			continue
 		}
 		td, err := s.tools.Get(ctx, node.ToolID)
@@ -501,12 +504,13 @@ func (s *Service) Compile(ctx context.Context, id string, values map[string]stri
 		}
 		graph.Nodes = append(graph.Nodes, exec.GraphNode{
 			ID: node.ID, Type: NodeTool, Name: node.Name,
-			ToolID: td.ID, ToolVersionID: td.Version.ID, ToolVersionNo: td.Version.VersionNo,
+			ToolID: td.ID, ToolName: td.Name, ToolVersionID: td.Version.ID, ToolVersionNo: td.Version.VersionNo,
 			ContentHash: td.Version.ContentHash, ToolType: td.Version.Type,
 			Interpreter: td.Version.Interpreter, Content: td.Version.Content,
 			PrepareCommand: td.Version.PrepareCommand, Sudo: td.Version.Sudo,
 			TimeoutSec: timeout, RetryCount: node.RetryCount, RetryDelaySec: node.RetryDelaySec,
 			Params: nodePlain, SensitiveParams: nodeSensitive,
+			X: node.X, Y: node.Y,
 		})
 	}
 	for _, e := range detail.Edges {

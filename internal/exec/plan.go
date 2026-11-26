@@ -23,6 +23,7 @@ type GraphNode struct {
 	Type            string            `json:"type"` // start | tool
 	Name            string            `json:"name"`
 	ToolID          string            `json:"tool_id,omitempty"`
+	ToolName        string            `json:"tool_name,omitempty"`
 	ToolVersionID   string            `json:"tool_version_id,omitempty"`
 	ToolVersionNo   int               `json:"tool_version_no,omitempty"`
 	ContentHash     string            `json:"content_hash,omitempty"`
@@ -36,6 +37,9 @@ type GraphNode struct {
 	RetryDelaySec   int               `json:"retry_delay_sec,omitempty"`
 	Params          map[string]string `json:"params,omitempty"`
 	SensitiveParams map[string]string `json:"sensitive_params,omitempty"`
+	// X and Y keep the editor layout so execution history can be drawn.
+	X float64 `json:"x"`
+	Y float64 `json:"y"`
 }
 
 // GraphEdge activates To when From's result matches Condition.

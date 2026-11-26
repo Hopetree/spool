@@ -47,6 +47,7 @@ export interface HostRun {
 export interface StepRun {
   id: string;
   host_run_id: string;
+  node_id: string;
   stage_idx: number;
   step_idx: number;
   name: string;
@@ -69,11 +70,36 @@ export interface StepRun {
   dropped_bytes: number;
 }
 
+export interface ExecutionGraphNode {
+  id: string;
+  type: "start" | "tool";
+  name: string;
+  tool_id?: string;
+  tool_name?: string;
+  tool_type?: string;
+  tool_version_no?: number;
+  x: number;
+  y: number;
+}
+
+export interface ExecutionGraphEdge {
+  from: string;
+  to: string;
+  condition: string;
+  value?: string;
+}
+
+export interface ExecutionGraphData {
+  nodes: ExecutionGraphNode[];
+  edges: ExecutionGraphEdge[];
+}
+
 export interface ExecutionDetail extends Execution {
   params: Record<string, string>;
   command?: string;
   host_runs: HostRun[];
   step_runs: StepRun[];
+  graph?: ExecutionGraphData;
 }
 
 export interface ExecutionEvent {
@@ -179,9 +205,11 @@ export async function listEvents(
   afterSeq = 0,
   limit = 5000,
   hostRunID?: string,
+  stepRunID?: string,
 ): Promise<{ items: ExecutionEvent[]; status: ExecutionStatus }> {
   const sp = new URLSearchParams({ after_seq: String(afterSeq), limit: String(limit) });
   if (hostRunID) sp.set("host_run", hostRunID);
+  if (stepRunID) sp.set("step_run", stepRunID);
   return request<{ items: ExecutionEvent[]; status: ExecutionStatus }>(
     "GET",
     `/executions/${id}/events?${sp.toString()}`,

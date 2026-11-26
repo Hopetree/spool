@@ -16,6 +16,7 @@ import {
   type FlowNode,
   type FlowNodeType,
 } from "../api/flows";
+import { statusColors, statusLabel } from "./status";
 
 /** Data carried by an editable flow node. */
 export interface FlowNodeData extends Record<string, unknown> {
@@ -28,6 +29,8 @@ export interface FlowNodeData extends Record<string, unknown> {
   timeoutSec: number;
   retryCount: number;
   retryDelaySec: number;
+  /** Execution status; only set when rendering a run graph. */
+  status?: string;
 }
 
 /** Data carried by an editable flow edge. */
@@ -51,12 +54,13 @@ export const edgeConditionOptions: { value: EdgeCondition; label: string }[] = (
   Object.keys(conditionLabel) as EdgeCondition[]
 ).map((c) => ({ value: c, label: conditionLabel[c] }));
 
-function boxStyle(selected: boolean | undefined, start: boolean): CSSProperties {
+function boxStyle(selected: boolean | undefined, start: boolean, status?: string): CSSProperties {
+  const statusColor = status ? statusColors[status] : undefined;
   return {
     width: 168,
     padding: "8px 10px",
     borderRadius: 8,
-    border: `1px solid ${selected ? "#1677ff" : start ? "#91caff" : "#d9d9d9"}`,
+    border: `1px solid ${selected ? "#1677ff" : statusColor ?? (start ? "#91caff" : "#d9d9d9")}`,
     background: start ? "#f0f7ff" : "#fff",
     boxShadow: selected ? "0 0 0 2px rgba(22,119,255,0.18)" : "0 1px 2px rgba(0,0,0,0.04)",
     fontSize: 12,
@@ -75,11 +79,37 @@ function StartNode({ selected }: NodeProps<FlowRFNode>) {
 }
 
 function ToolNode({ data, selected }: NodeProps<FlowRFNode>) {
+  const color = data.status ? statusColors[data.status] : undefined;
   return (
-    <div style={boxStyle(selected, false)}>
+    <div style={boxStyle(selected, false, data.status)}>
       <Handle type="target" position={Position.Left} style={{ width: 8, height: 8 }} />
-      <div style={{ fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-        {data.name || "未命名节点"}
+      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+        <span
+          style={{
+            fontWeight: 600,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+            flex: 1,
+          }}
+        >
+          {data.name || "未命名节点"}
+        </span>
+        {color && (
+          <span
+            style={{
+              flex: "none",
+              fontSize: 10,
+              lineHeight: "16px",
+              padding: "0 5px",
+              borderRadius: 8,
+              color,
+              background: `${color}1a`,
+            }}
+          >
+            {statusLabel(data.status ?? "")}
+          </span>
+        )}
       </div>
       <div
         style={{
@@ -90,7 +120,7 @@ function ToolNode({ data, selected }: NodeProps<FlowRFNode>) {
           whiteSpace: "nowrap",
         }}
       >
-        {data.toolName ? `工具 · ${data.toolName}` : "未选择工具"}
+        {data.toolName ? `工具 · ${data.toolName}` : data.toolID ? `工具 · ${data.toolID}` : "未选择工具"}
       </div>
       <Handle type="source" position={Position.Right} style={{ width: 8, height: 8 }} />
     </div>

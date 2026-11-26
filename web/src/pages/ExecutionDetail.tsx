@@ -1,10 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Alert,
   App as AntApp,
   Button,
   Card,
   Descriptions,
+  Drawer,
   Empty,
   Popconfirm,
   Space,
@@ -25,8 +26,11 @@ import {
   type StepRun,
 } from "../api/executions";
 import { ApiError } from "../api/client";
+import { listTools } from "../api/tools";
+import ExecutionGraph from "../components/ExecutionGraph";
 import ExecutionStatusTag from "../components/ExecutionStatusTag";
 import LogViewer from "../components/LogViewer";
+import { aggregateStatus } from "../components/status";
 
 function duration(start: number | null, end: number | null): string {
   if (!start) return "—";
@@ -47,6 +51,8 @@ export default function ExecutionDetail() {
   const qc = useQueryClient();
   const { message } = AntApp.useApp();
   const [selectedHost, setSelectedHost] = useState<string>();
+  const [selectedNodeID, setSelectedNodeID] = useState<string>();
+  const [selectedStepID, setSelectedStepID] = useState<string>();
 
   const { data, isLoading } = useQuery({
     queryKey: ["execution", id],
@@ -104,6 +110,48 @@ export default function ExecutionDetail() {
   const currentHost = data?.host_runs.find((h) => h.id === selectedHost);
   const backPath =
     data?.kind === "flow" ? "/flows/executions" : data?.kind === "adhoc" ? "/adhoc/history" : "/tools/executions";
+
+  const graph = data?.graph;
+  // Old plan snapshots do not carry tool names; resolve them for display.
+  const { data: toolPage } = useQuery({
+    queryKey: ["tools", "execution-graph-names"],
+    queryFn: () => listTools({ page: 1, page_size: 100 }),
+    enabled: data?.kind === "flow",
+  });
+  const displayGraph = useMemo(() => {
+    if (!graph) return graph;
+    const names = new Map((toolPage?.items ?? []).map((t) => [t.id, t.name]));
+    return {
+      ...graph,
+      nodes: graph.nodes.map((n) => ({
+        ...n,
+        tool_name: n.tool_name || (n.tool_id ? names.get(n.tool_id) : undefined) || "",
+      })),
+    };
+  }, [graph, toolPage]);
+  const showGraph = data?.kind === "flow" && !!displayGraph && displayGraph.nodes.length > 0;
+  const nodeStatuses = useMemo(() => {
+    const byNode = new Map<string, string[]>();
+    for (const s of data?.step_runs ?? []) {
+      if (!s.node_id) continue;
+      const list = byNode.get(s.node_id) ?? [];
+      list.push(s.status);
+      byNode.set(s.node_id, list);
+    }
+    const out: Record<string, string> = {};
+    byNode.forEach((statuses, nodeID) => {
+      out[nodeID] = aggregateStatus(statuses);
+    });
+    return out;
+  }, [data]);
+  const graphNode = displayGraph?.nodes.find((n) => n.id === selectedNodeID);
+  const nodeSteps = (data?.step_runs ?? []).filter((s) => s.node_id === selectedNodeID);
+  const activeNodeStep = nodeSteps.find((s) => s.id === selectedStepID) ?? nodeSteps[0];
+
+  const openNode = (nodeID: string) => {
+    setSelectedNodeID(nodeID);
+    setSelectedStepID(undefined);
+  };
 
   return (
     <div>
@@ -300,6 +348,25 @@ export default function ExecutionDetail() {
 
       {!singleStep && (
         <>
+          {showGraph && displayGraph && (
+            <Card
+              title="执行流程图"
+              extra={
+                <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                  节点颜色表示执行结果，点击节点查看该节点的工具执行详情
+                </Typography.Text>
+              }
+              style={{ marginBottom: 16 }}
+            >
+              <ExecutionGraph
+                graph={displayGraph}
+                statusByNode={nodeStatuses}
+                height={420}
+                onNodeClick={openNode}
+              />
+            </Card>
+          )}
+
           <Card title="主机" style={{ marginBottom: 16 }}>
             <Table<HostRun>
               rowKey="id"
@@ -328,46 +395,48 @@ export default function ExecutionDetail() {
             />
           </Card>
 
-          <Card title="步骤" style={{ marginBottom: 16 }}>
-            <Table<StepRun>
-              rowKey="id"
-              dataSource={data?.step_runs ?? []}
-              pagination={false}
-              size="small"
-              columns={[
-                { title: "主机", render: (_, r) => hostName(r.host_run_id) },
-                { title: "步骤", dataIndex: "name" },
-                { title: "状态", dataIndex: "status", render: (v: string) => <ExecutionStatusTag status={v} /> },
-                {
-                  title: "退出码",
-                  dataIndex: "exit_code",
-                  width: 90,
-                  render: (v: number | null) => (v === null ? "—" : v),
-                },
-                { title: "尝试", dataIndex: "attempt", width: 70 },
-                { title: "耗时", render: (_, r) => duration(r.started_at, r.finished_at) },
-                {
-                  title: "输出",
-                  render: (_, r) => (
-                    <Space size={4}>
-                      <span>{bytes(r.log_bytes)}</span>
-                      {r.truncated && <Tag color="orange">已截断</Tag>}
-                    </Space>
-                  ),
-                },
-                { title: "错误", dataIndex: "error_message", ellipsis: true },
-                {
-                  title: "日志",
-                  width: 90,
-                  render: (_, r) => (
-                    <Button size="small" href={id ? logDownloadUrl(id, r.host_run_id, r.id) : "#"} target="_blank">
-                      下载
-                    </Button>
-                  ),
-                },
-              ]}
-            />
-          </Card>
+          {!showGraph && (
+            <Card title="步骤" style={{ marginBottom: 16 }}>
+              <Table<StepRun>
+                rowKey="id"
+                dataSource={data?.step_runs ?? []}
+                pagination={false}
+                size="small"
+                columns={[
+                  { title: "主机", render: (_, r) => hostName(r.host_run_id) },
+                  { title: "步骤", dataIndex: "name" },
+                  { title: "状态", dataIndex: "status", render: (v: string) => <ExecutionStatusTag status={v} /> },
+                  {
+                    title: "退出码",
+                    dataIndex: "exit_code",
+                    width: 90,
+                    render: (v: number | null) => (v === null ? "—" : v),
+                  },
+                  { title: "尝试", dataIndex: "attempt", width: 70 },
+                  { title: "耗时", render: (_, r) => duration(r.started_at, r.finished_at) },
+                  {
+                    title: "输出",
+                    render: (_, r) => (
+                      <Space size={4}>
+                        <span>{bytes(r.log_bytes)}</span>
+                        {r.truncated && <Tag color="orange">已截断</Tag>}
+                      </Space>
+                    ),
+                  },
+                  { title: "错误", dataIndex: "error_message", ellipsis: true },
+                  {
+                    title: "日志",
+                    width: 90,
+                    render: (_, r) => (
+                      <Button size="small" href={id ? logDownloadUrl(id, r.host_run_id, r.id) : "#"} target="_blank">
+                        下载
+                      </Button>
+                    ),
+                  },
+                ]}
+              />
+            </Card>
+          )}
 
           {id && (
             <Card title="实时输出">
@@ -376,6 +445,116 @@ export default function ExecutionDetail() {
           )}
         </>
       )}
+
+      <Drawer
+        open={!!selectedNodeID && !!graphNode}
+        onClose={() => setSelectedNodeID(undefined)}
+        width={860}
+        title={
+          graphNode ? (
+            <Space>
+              <span>{graphNode.type === "start" ? "开始" : graphNode.name}</span>
+              {graphNode.type === "tool" && nodeStatuses[graphNode.id] && (
+                <ExecutionStatusTag status={nodeStatuses[graphNode.id]} />
+              )}
+            </Space>
+          ) : (
+            "节点详情"
+          )
+        }
+      >
+        {graphNode?.type === "start" && (
+          <Alert type="info" showIcon message="开始节点只用于触发后续分支，没有工具执行记录。" />
+        )}
+        {graphNode?.type === "tool" && (
+          <Space direction="vertical" size={12} style={{ width: "100%" }}>
+            <Descriptions
+              size="small"
+              column={2}
+              items={[
+                { key: "tool", label: "工具", children: graphNode.tool_name || graphNode.tool_id || "—" },
+                {
+                  key: "version",
+                  label: "版本",
+                  children: graphNode.tool_version_no ? `v${graphNode.tool_version_no}` : "—",
+                },
+                { key: "type", label: "类型", children: graphNode.tool_type || "—" },
+                {
+                  key: "hosts",
+                  label: "执行主机",
+                  children: `${nodeSteps.filter((s) => s.status !== "skipped").length} / ${nodeSteps.length}`,
+                },
+              ]}
+            />
+            {nodeSteps.length === 0 ? (
+              <Empty description="该节点没有执行记录" />
+            ) : (
+              <>
+                <Table<StepRun>
+                  rowKey="id"
+                  dataSource={nodeSteps}
+                  pagination={false}
+                  size="small"
+                  rowClassName={(r) => (r.id === activeNodeStep?.id ? "ant-table-row-selected" : "")}
+                  onRow={(r) => ({ onClick: () => setSelectedStepID(r.id), style: { cursor: "pointer" } })}
+                  columns={[
+                    { title: "主机", render: (_, r) => hostName(r.host_run_id) },
+                    { title: "状态", dataIndex: "status", render: (v: string) => <ExecutionStatusTag status={v} /> },
+                    {
+                      title: "退出码",
+                      dataIndex: "exit_code",
+                      width: 80,
+                      render: (v: number | null) => (v === null ? "—" : v),
+                    },
+                    { title: "尝试", dataIndex: "attempt", width: 70 },
+                    { title: "耗时", render: (_, r) => duration(r.started_at, r.finished_at) },
+                    { title: "输出", render: (_, r) => bytes(r.log_bytes) },
+                    { title: "错误", dataIndex: "error_message", ellipsis: true },
+                  ]}
+                />
+                {activeNodeStep ? (
+                  <div>
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        gap: 8,
+                        marginBottom: 8,
+                      }}
+                    >
+                      <Typography.Text strong>{hostName(activeNodeStep.host_run_id)} 的输出</Typography.Text>
+                      <Button
+                        size="small"
+                        href={logDownloadUrl(id!, activeNodeStep.host_run_id, activeNodeStep.id)}
+                        target="_blank"
+                      >
+                        下载该节点日志
+                      </Button>
+                    </div>
+                    {activeNodeStep.error_message && (
+                      <Alert
+                        type="error"
+                        showIcon
+                        message={activeNodeStep.error_message}
+                        style={{ marginBottom: 8 }}
+                      />
+                    )}
+                    <LogViewer
+                      executionId={id!}
+                      active={!!active}
+                      hostRunID={activeNodeStep.host_run_id}
+                      stepRunID={activeNodeStep.id}
+                    />
+                  </div>
+                ) : (
+                  <Empty description="请选择一台主机查看输出" />
+                )}
+              </>
+            )}
+          </Space>
+        )}
+      </Drawer>
     </div>
   );
 }

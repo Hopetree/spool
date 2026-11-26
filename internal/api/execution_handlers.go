@@ -32,6 +32,58 @@ type executionDTO struct {
 	Command  string            `json:"command,omitempty"`
 	HostRuns []exec.HostRun    `json:"host_runs,omitempty"`
 	StepRuns []exec.StepRun    `json:"step_runs,omitempty"`
+	Graph    *executionGraph   `json:"graph,omitempty"`
+}
+
+type executionGraph struct {
+	Nodes []executionGraphNode `json:"nodes"`
+	Edges []executionGraphEdge `json:"edges"`
+}
+
+type executionGraphNode struct {
+	ID            string  `json:"id"`
+	Type          string  `json:"type"`
+	Name          string  `json:"name"`
+	ToolID        string  `json:"tool_id,omitempty"`
+	ToolName      string  `json:"tool_name,omitempty"`
+	ToolType      string  `json:"tool_type,omitempty"`
+	ToolVersionNo int     `json:"tool_version_no,omitempty"`
+	X             float64 `json:"x"`
+	Y             float64 `json:"y"`
+}
+
+type executionGraphEdge struct {
+	From      string `json:"from"`
+	To        string `json:"to"`
+	Condition string `json:"condition"`
+	Value     string `json:"value,omitempty"`
+}
+
+// executionGraphOf extracts the graph snapshot stored with a flow execution.
+func executionGraphOf(planJSON string) *executionGraph {
+	if planJSON == "" {
+		return nil
+	}
+	var plan exec.Plan
+	if err := json.Unmarshal([]byte(planJSON), &plan); err != nil || plan.Graph == nil {
+		return nil
+	}
+	out := &executionGraph{
+		Nodes: make([]executionGraphNode, 0, len(plan.Graph.Nodes)),
+		Edges: make([]executionGraphEdge, 0, len(plan.Graph.Edges)),
+	}
+	for _, n := range plan.Graph.Nodes {
+		out.Nodes = append(out.Nodes, executionGraphNode{
+			ID: n.ID, Type: n.Type, Name: n.Name, ToolID: n.ToolID, ToolName: n.ToolName,
+			ToolType: n.ToolType, ToolVersionNo: n.ToolVersionNo, X: n.X, Y: n.Y,
+		})
+	}
+	for _, e := range plan.Graph.Edges {
+		out.Edges = append(out.Edges, executionGraphEdge{
+			From: e.From, To: e.To, Condition: e.Condition, Value: e.Value,
+		})
+	}
+	return out
 }
 
 func splitSensitive(params []tool.Param, values map[string]string) (plain, sensitive map[string]string) {
@@ -169,7 +221,10 @@ func getExecutionHandler(d Deps) gin.HandlerFunc {
 			command = params["command"]
 			delete(params, "command")
 		}
-		ok(c, executionDTO{Execution: *ex, Params: params, Command: command, HostRuns: hostRuns, StepRuns: steps})
+		ok(c, executionDTO{
+			Execution: *ex, Params: params, Command: command,
+			HostRuns: hostRuns, StepRuns: steps, Graph: executionGraphOf(ex.PlanJSON),
+		})
 	}
 }
 
@@ -466,11 +521,18 @@ func executionEventsHandler(d Deps) gin.HandlerFunc {
 			fail(c, http.StatusInternalServerError, "internal_error", "读取日志失败", nil)
 			return
 		}
-		if hostRunID := c.Query("host_run"); hostRunID != "" {
+		hostRunID := c.Query("host_run")
+		stepRunID := c.Query("step_run")
+		if hostRunID != "" || stepRunID != "" {
 			filtered := make([]exec.Event, 0, len(events))
 			for _, ev := range events {
-				if ev.Type == "log" && ev.HostRunID != hostRunID {
-					continue
+				if ev.Type == "log" {
+					if hostRunID != "" && ev.HostRunID != hostRunID {
+						continue
+					}
+					if stepRunID != "" && ev.StepRunID != stepRunID {
+						continue
+					}
 				}
 				filtered = append(filtered, ev)
 			}
@@ -509,13 +571,19 @@ func streamExecutionHandler(d Deps) gin.HandlerFunc {
 		c.Header("X-Accel-Buffering", "no")
 
 		filterHost := c.Query("host_run")
+		filterStep := c.Query("step_run")
 		last := after
 		write := func(ev exec.Event) {
 			if ev.Seq <= last {
 				return
 			}
-			if filterHost != "" && ev.Type == "log" && ev.HostRunID != filterHost {
-				return
+			if ev.Type == "log" {
+				if filterHost != "" && ev.HostRunID != filterHost {
+					return
+				}
+				if filterStep != "" && ev.StepRunID != filterStep {
+					return
+				}
 			}
 			b, err := json.Marshal(ev)
 			if err != nil {

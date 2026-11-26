@@ -136,9 +136,33 @@ func TestExecuteFlowAndRerun(t *testing.T) {
 		t.Fatalf("sensitive flow param leaked: %v", params)
 	}
 
+	graph, ok := detail["graph"].(map[string]any)
+	if !ok {
+		t.Fatalf("flow execution detail missing graph: %+v", detail)
+	}
+	nodes := graph["nodes"].([]any)
+	edges := graph["edges"].([]any)
+	if len(nodes) != 3 || len(edges) != 2 {
+		t.Fatalf("graph nodes=%d edges=%d", len(nodes), len(edges))
+	}
+	for _, raw := range nodes {
+		n := raw.(map[string]any)
+		if n["id"] == "step1" {
+			if n["tool_name"] == "" || n["x"] != float64(260) {
+				t.Fatalf("graph node step1 = %+v", n)
+			}
+		}
+	}
+
 	w = e.do(t, http.MethodGet, "/api/v1/executions/"+execID+"/events", nil, operator)
 	if w.Code != http.StatusOK || strings.Count(w.Body.String(), "hello") < 2 {
 		t.Fatalf("events status=%d body=%s", w.Code, w.Body.String())
+	}
+
+	firstStepID := steps[0].(map[string]any)["id"].(string)
+	w = e.do(t, http.MethodGet, "/api/v1/executions/"+execID+"/events?step_run="+firstStepID, nil, operator)
+	if w.Code != http.StatusOK || strings.Count(w.Body.String(), "hello") != 1 {
+		t.Fatalf("step filtered events status=%d body=%s", w.Code, w.Body.String())
 	}
 
 	w = e.do(t, http.MethodPost, "/api/v1/executions/"+execID+"/rerun", nil, operator)
