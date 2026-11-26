@@ -44,7 +44,7 @@ func createTestHost(t *testing.T, e *testEnv, cookie *http.Cookie, credentialID 
 
 func TestHostCRUDApi(t *testing.T) {
 	e := newTestEnv(t)
-	admin := loginAs(t, e, "admin", e.password)
+	admin := adminCookie(t, e)
 	cred := createTestCredential(t, e, admin)
 	credID := cred["id"].(string)
 
@@ -105,7 +105,7 @@ func TestHostCRUDApi(t *testing.T) {
 
 func TestHostTestApi(t *testing.T) {
 	e := newTestEnv(t)
-	admin := loginAs(t, e, "admin", e.password)
+	admin := adminCookie(t, e)
 	cred := createTestCredential(t, e, admin)
 	hostBody := createTestHost(t, e, admin, cred["id"].(string))
 	hostID := hostBody["id"].(string)
@@ -134,7 +134,7 @@ func TestHostTestApi(t *testing.T) {
 
 func TestHostTestHostKeyMismatch(t *testing.T) {
 	e := newTestEnv(t)
-	admin := loginAs(t, e, "admin", e.password)
+	admin := adminCookie(t, e)
 	cred := createTestCredential(t, e, admin)
 	hostBody := createTestHost(t, e, admin, cred["id"].(string))
 	hostID := hostBody["id"].(string)
@@ -156,7 +156,7 @@ func TestHostTestHostKeyMismatch(t *testing.T) {
 
 func TestSetFingerprintApi(t *testing.T) {
 	e := newTestEnv(t)
-	admin := loginAs(t, e, "admin", e.password)
+	admin := adminCookie(t, e)
 	cred := createTestCredential(t, e, admin)
 	hostBody := createTestHost(t, e, admin, cred["id"].(string))
 	hostID := hostBody["id"].(string)
@@ -185,7 +185,7 @@ func TestSetFingerprintApi(t *testing.T) {
 
 func TestGroupApi(t *testing.T) {
 	e := newTestEnv(t)
-	admin := loginAs(t, e, "admin", e.password)
+	admin := adminCookie(t, e)
 	w := e.do(t, http.MethodPost, "/api/v1/host-groups", map[string]any{
 		"name": "prod", "description": "production",
 	}, admin)

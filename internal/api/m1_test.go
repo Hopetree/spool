@@ -27,6 +27,19 @@ func loginAs(t *testing.T, e *testEnv, username, password string) *http.Cookie {
 	return nil
 }
 
+func adminCookie(t *testing.T, e *testEnv) *http.Cookie {
+	t.Helper()
+	cookie := loginAs(t, e, "admin", e.password)
+	w := e.do(t, http.MethodPut, "/api/v1/auth/password", map[string]string{
+		"old_password": e.password, "new_password": "adminpass123",
+	}, cookie)
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("change admin password: status = %d, body = %s", w.Code, w.Body.String())
+	}
+	e.password = "adminpass123"
+	return cookie
+}
+
 func createTestCredential(t *testing.T, e *testEnv, cookie *http.Cookie) map[string]any {
 	t.Helper()
 	w := e.do(t, http.MethodPost, "/api/v1/credentials", map[string]any{
@@ -48,7 +61,7 @@ func createTestCredential(t *testing.T, e *testEnv, cookie *http.Cookie) map[str
 
 func TestCredentialCRUDAsAdmin(t *testing.T) {
 	e := newTestEnv(t)
-	cookie := loginAs(t, e, "admin", e.password)
+	cookie := adminCookie(t, e)
 
 	created := createTestCredential(t, e, cookie)
 	id, _ := created["id"].(string)
@@ -109,7 +122,7 @@ func TestCredentialRequiresAdmin(t *testing.T) {
 
 func TestCredentialDeleteInUse(t *testing.T) {
 	e := newTestEnv(t)
-	cookie := loginAs(t, e, "admin", e.password)
+	cookie := adminCookie(t, e)
 	created := createTestCredential(t, e, cookie)
 	id := created["id"].(string)
 	now := time.Now().UnixMilli()
@@ -131,7 +144,7 @@ func TestCredentialDeleteInUse(t *testing.T) {
 
 func TestCredentialValidation(t *testing.T) {
 	e := newTestEnv(t)
-	cookie := loginAs(t, e, "admin", e.password)
+	cookie := adminCookie(t, e)
 	w := e.do(t, http.MethodPost, "/api/v1/credentials", map[string]any{
 		"name": "bad", "auth_type": "password", "username": "root",
 	}, cookie)

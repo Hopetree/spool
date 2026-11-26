@@ -46,7 +46,7 @@ func NewRouter(d Deps) *gin.Engine {
 	v1.POST("/auth/login", loginHandler(d, limiter))
 
 	authed := v1.Group("")
-	authed.Use(RequireAuth(d.Auth))
+	authed.Use(RequireAuth(d.Auth), ForcePasswordChange())
 	authed.GET("/auth/me", meHandler())
 	authed.POST("/auth/logout", logoutHandler(d))
 	authed.PUT("/auth/password", changePasswordHandler(d))
