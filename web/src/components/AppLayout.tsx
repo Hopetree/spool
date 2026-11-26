@@ -1,4 +1,13 @@
-import { CloudServerOutlined, HomeOutlined, KeyOutlined, LockOutlined, LogoutOutlined, UserOutlined } from "@ant-design/icons";
+import {
+  CloudServerOutlined,
+  HistoryOutlined,
+  HomeOutlined,
+  KeyOutlined,
+  LockOutlined,
+  LogoutOutlined,
+  ToolOutlined,
+  UserOutlined,
+} from "@ant-design/icons";
 import { Avatar, Dropdown, Layout, Menu, Space, Typography } from "antd";
 import type { MenuProps } from "antd";
 import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
@@ -16,6 +25,8 @@ export default function AppLayout() {
   const items: MenuProps["items"] = [
     { key: "/", icon: <HomeOutlined />, label: <Link to="/">首页</Link> },
     { key: "/hosts", icon: <CloudServerOutlined />, label: <Link to="/hosts">主机</Link> },
+    { key: "/tools", icon: <ToolOutlined />, label: <Link to="/tools">工具</Link> },
+    { key: "/executions", icon: <HistoryOutlined />, label: <Link to="/executions">执行历史</Link> },
   ];
   if (user?.role === "admin") {
     items.push({ key: "/credentials", icon: <KeyOutlined />, label: <Link to="/credentials">凭据</Link> });

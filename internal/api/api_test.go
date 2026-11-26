@@ -16,9 +16,11 @@ import (
 	"github.com/Hopetree/spool/internal/auth"
 	"github.com/Hopetree/spool/internal/config"
 	"github.com/Hopetree/spool/internal/credential"
+	"github.com/Hopetree/spool/internal/exec"
 	"github.com/Hopetree/spool/internal/host"
 	"github.com/Hopetree/spool/internal/sshx"
 	"github.com/Hopetree/spool/internal/store"
+	"github.com/Hopetree/spool/internal/tool"
 )
 
 type stubProber struct {
@@ -37,6 +39,8 @@ type testEnv struct {
 	store    *store.Store
 	auth     *auth.Service
 	prober   *stubProber
+	runner   *stubRunner
+	engine   *exec.Engine
 	password string
 }
 
@@ -51,6 +55,7 @@ func newTestEnv(t *testing.T) *testEnv {
 		t.Fatalf("migrate: %v", err)
 	}
 	cfg := config.Default()
+	cfg.DataDir = t.TempDir()
 	authSvc := auth.NewService(st.DB, time.Hour)
 	pw, _, err := authSvc.BootstrapAdmin(context.Background())
 	if err != nil {
@@ -64,6 +69,17 @@ func newTestEnv(t *testing.T) *testEnv {
 	prober := &stubProber{res: sshx.ProbeResult{
 		User: "root", OS: "Linux", Fingerprint: "SHA256:new", KeyType: "ssh-ed25519", SFTP: true,
 	}}
+	toolSvc := tool.NewService(st.DB)
+	runner := &stubRunner{out: "hello\n"}
+	engine := exec.New(st.DB, credSvc, &stubFactory{r: runner}, exec.Config{
+		LogsDir:               filepath.Join(cfg.DataDir, "logs"),
+		MaxConcurrentSteps:    2,
+		MaxConcurrentHostRuns: 2,
+	})
+	if err := engine.Start(context.Background()); err != nil {
+		t.Fatalf("engine start: %v", err)
+	}
+	t.Cleanup(engine.Stop)
 	env := &testEnv{
 		router: NewRouter(Deps{
 			Cfg:         &cfg,
@@ -72,11 +88,15 @@ func newTestEnv(t *testing.T) *testEnv {
 			Audit:       audit.NewService(st.DB),
 			Credentials: credSvc,
 			Hosts:       host.NewService(st.DB, credSvc, prober, "tofu"),
+			Tools:       toolSvc,
+			Engine:      engine,
 			Version:     "test",
 		}),
 		store:    st,
 		auth:     authSvc,
 		prober:   prober,
+		runner:   runner,
+		engine:   engine,
 		password: pw,
 	}
 	return env

@@ -33,13 +33,24 @@ type SecurityConfig struct {
 	HostKeyPolicy       string `yaml:"host_key_policy"`
 }
 
+// ExecutionConfig tunes the execution engine.
+type ExecutionConfig struct {
+	MaxConcurrentSteps    int    `yaml:"max_concurrent_steps"`
+	MaxConcurrentHostRuns int    `yaml:"max_concurrent_host_runs"`
+	DefaultStepTimeoutSec int    `yaml:"default_step_timeout_sec"`
+	StepOutputLimitMB     int    `yaml:"step_output_limit_mb"`
+	RemoteBaseDir         string `yaml:"remote_base_dir"`
+	RetentionDays         int    `yaml:"retention_days"`
+}
+
 // Config is the root configuration loaded from YAML with env overrides.
 type Config struct {
-	Server   ServerConfig   `yaml:"server"`
-	DataDir  string         `yaml:"data_dir"`
-	Timezone string         `yaml:"timezone"`
-	Logging  LoggingConfig  `yaml:"logging"`
-	Security SecurityConfig `yaml:"security"`
+	Server    ServerConfig    `yaml:"server"`
+	DataDir   string          `yaml:"data_dir"`
+	Timezone  string          `yaml:"timezone"`
+	Logging   LoggingConfig   `yaml:"logging"`
+	Security  SecurityConfig  `yaml:"security"`
+	Execution ExecutionConfig `yaml:"execution"`
 }
 
 // Default returns the built-in configuration used when a field is omitted.
@@ -51,6 +62,12 @@ func Default() Config {
 	c.Security.LoginMaxFailures = 5
 	c.Security.LoginLockoutMinutes = 5
 	c.Security.HostKeyPolicy = "tofu"
+	c.Execution.MaxConcurrentSteps = 20
+	c.Execution.MaxConcurrentHostRuns = 50
+	c.Execution.DefaultStepTimeoutSec = 300
+	c.Execution.StepOutputLimitMB = 20
+	c.Execution.RemoteBaseDir = "/tmp"
+	c.Execution.RetentionDays = 90
 	return c
 }
 
@@ -123,6 +140,24 @@ func (c *Config) Validate() error {
 	}
 	if c.Security.LoginLockoutMinutes <= 0 {
 		return fmt.Errorf("security.login_lockout_minutes must be > 0")
+	}
+	if c.Execution.MaxConcurrentSteps <= 0 {
+		return fmt.Errorf("execution.max_concurrent_steps must be > 0")
+	}
+	if c.Execution.MaxConcurrentHostRuns <= 0 {
+		return fmt.Errorf("execution.max_concurrent_host_runs must be > 0")
+	}
+	if c.Execution.DefaultStepTimeoutSec <= 0 {
+		return fmt.Errorf("execution.default_step_timeout_sec must be > 0")
+	}
+	if c.Execution.StepOutputLimitMB <= 0 {
+		return fmt.Errorf("execution.step_output_limit_mb must be > 0")
+	}
+	if c.Execution.RemoteBaseDir == "" {
+		return fmt.Errorf("execution.remote_base_dir is required")
+	}
+	if c.Execution.RetentionDays <= 0 {
+		return fmt.Errorf("execution.retention_days must be > 0")
 	}
 	return nil
 }

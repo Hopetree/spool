@@ -10,8 +10,10 @@ import (
 	"github.com/Hopetree/spool/internal/auth"
 	"github.com/Hopetree/spool/internal/config"
 	"github.com/Hopetree/spool/internal/credential"
+	"github.com/Hopetree/spool/internal/exec"
 	"github.com/Hopetree/spool/internal/host"
 	"github.com/Hopetree/spool/internal/store"
+	"github.com/Hopetree/spool/internal/tool"
 )
 
 // Deps carries the services the HTTP layer needs.
@@ -22,6 +24,8 @@ type Deps struct {
 	Audit       *audit.Service
 	Credentials *credential.Service
 	Hosts       *host.Service
+	Tools       *tool.Service
+	Engine      *exec.Engine
 	Version     string
 	StartedAt   time.Time
 	WebHandler  http.Handler
@@ -64,14 +68,33 @@ func NewRouter(d Deps) *gin.Engine {
 	admin.POST("/host-groups", createGroupHandler(d))
 	admin.PUT("/host-groups/:id", updateGroupHandler(d))
 	admin.DELETE("/host-groups/:id", deleteGroupHandler(d))
+	admin.POST("/tools", createToolHandler(d))
+	admin.PUT("/tools/:id", updateToolHandler(d))
+	admin.DELETE("/tools/:id", deleteToolHandler(d))
+	admin.POST("/tools/:id/enabled", setToolEnabledHandler(d))
+	admin.POST("/tools/:id/rollback", rollbackToolHandler(d))
+	admin.POST("/tools/:id/copy", copyToolHandler(d))
 
 	authed.GET("/hosts", listHostsHandler(d))
 	authed.GET("/hosts/:id", getHostHandler(d))
 	authed.GET("/host-groups", listGroupsHandler(d))
+	authed.GET("/tools", listToolsHandler(d))
+	authed.GET("/tools/:id", getToolHandler(d))
+	authed.GET("/tools/:id/versions", toolVersionsHandler(d))
+	authed.GET("/tools/:id/versions/:no", toolVersionHandler(d))
+	authed.GET("/executions", listExecutionsHandler(d))
+	authed.GET("/executions/:id", getExecutionHandler(d))
+	authed.GET("/executions/:id/events", executionEventsHandler(d))
+	authed.GET("/executions/:id/stream", streamExecutionHandler(d))
+	authed.GET("/executions/:id/logs/download", downloadExecutionLogHandler(d))
 
 	ops := authed.Group("")
 	ops.Use(RequireRole("operator"))
 	ops.POST("/hosts/:id/test", testHostHandler(d))
+	ops.POST("/executions", createExecutionHandler(d))
+	ops.POST("/executions/:id/cancel", cancelExecutionHandler(d))
+	ops.POST("/executions/:id/rerun", rerunExecutionHandler(d))
+	ops.POST("/executions/:id/host-runs/:hostRunId/cancel", cancelHostRunHandler(d))
 
 	if d.WebHandler != nil {
 		r.NoRoute(gin.WrapH(d.WebHandler))
