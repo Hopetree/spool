@@ -14,3 +14,10 @@ security:
   login_max_failures: 5
   login_lockout_minutes: 5
   host_key_policy: tofu
+execution:
+  max_concurrent_steps: 20
+  max_concurrent_host_runs: 50
+  default_step_timeout_sec: 300
+  step_output_limit_mb: 20
+  remote_base_dir: /tmp
+  retention_days: 90

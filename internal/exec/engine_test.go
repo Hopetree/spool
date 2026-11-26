@@ -381,3 +381,22 @@ func TestSubmitRejectsNoEnabledHosts(t *testing.T) {
 		t.Fatalf("err = %v, want ErrNoHosts", err)
 	}
 }
+
+func TestHostConnectFailureSkipsSteps(t *testing.T) {
+	fx := newEngineFixture(t, Config{}, &fakeRunnerWrapper{r: &fakeRunner{}})
+	fx.engine.factory = &fakeFactory{err: errors.New("boom")}
+	ex, err := fx.engine.Submit(context.Background(), SubmitRequest{
+		Kind: "tool", Name: "demo", Plan: toolPlan("demo", "echo"), HostIDs: []string{fx.hostID},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	final := waitTerminal(t, fx.engine, ex.ID)
+	if final.Status != "failed" || final.FailureReason != "ssh_error" {
+		t.Fatalf("execution = %+v", final)
+	}
+	steps, _ := fx.engine.StepRuns(context.Background(), ex.ID)
+	if len(steps) != 1 || steps[0].Status != "skipped" || steps[0].FailureReason != "skipped" {
+		t.Fatalf("step = %+v", steps[0])
+	}
+}

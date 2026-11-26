@@ -534,9 +534,16 @@ func (e *Engine) runExecution(execID string) {
 	if failed > 0 {
 		summary = fmt.Sprintf("%d 台主机执行失败", failed)
 	}
+	failureReason := ""
+	for _, h := range finalHosts {
+		if h.FailureReason != "" && h.FailureReason != "cancelled" && h.FailureReason != "interrupted" {
+			failureReason = h.FailureReason
+			break
+		}
+	}
 	if _, err := e.db.ExecContext(context.Background(), `UPDATE executions SET status=?, host_success=?, host_failed=?,
-		host_cancelled=?, finished_at=?, error_summary=? WHERE id=?`,
-		status, success, failed, cancelled, e.nowMs(), summary, execID); err != nil {
+		host_cancelled=?, finished_at=?, failure_reason=?, error_summary=? WHERE id=?`,
+		status, success, failed, cancelled, e.nowMs(), failureReason, summary, execID); err != nil {
 		return
 	}
 	log.Emit(Event{Type: "state", Entity: "execution", Status: status})
@@ -563,6 +570,7 @@ func (e *Engine) runHost(ctx context.Context, log *EventLog, ex Execution, hr Ho
 	case e.hostSem <- struct{}{}:
 	case <-ctx.Done():
 		cs := e.cancelStatus()
+		e.skipQueuedSteps(log, steps, "cancelled", "执行已取消")
 		e.finishHost(log, hr.ID, cs, cs, "执行已取消")
 		return
 	}
@@ -573,6 +581,7 @@ func (e *Engine) runHost(ctx context.Context, log *EventLog, ex Execution, hr Ho
 	defer lock.Unlock()
 	if ctx.Err() != nil {
 		cs := e.cancelStatus()
+		e.skipQueuedSteps(log, steps, "cancelled", "执行已取消")
 		e.finishHost(log, hr.ID, cs, cs, "执行已取消")
 		return
 	}
@@ -590,17 +599,21 @@ func (e *Engine) runHost(ctx context.Context, log *EventLog, ex Execution, hr Ho
 
 	target, err := e.loadHost(hostCtx, hr.HostID)
 	if err != nil {
+		e.skipQueuedSteps(log, steps, "skipped", "主机不可用，未执行")
 		e.finishHost(log, hr.ID, "failed", "host_unavailable", err.Error())
 		return
 	}
 	runner, err := e.factory.Connect(hostCtx, target.ref)
 	if err != nil {
+		e.skipQueuedSteps(log, steps, "skipped", "SSH 连接失败，未执行")
 		e.finishHost(log, hr.ID, "failed", "ssh_error", err.Error())
 		return
 	}
 	defer runner.Close()
 
 	if _, err := e.db.ExecContext(hostCtx, `UPDATE host_runs SET status='running', started_at=? WHERE id=?`, e.nowMs(), hr.ID); err != nil {
+		e.skipQueuedSteps(log, steps, "skipped", "内部错误，未执行")
+		e.finishHost(log, hr.ID, "failed", "internal_error", err.Error())
 		return
 	}
 	log.Emit(Event{Type: "state", Entity: "host_run", Status: "running", HostRunID: hr.ID})
@@ -654,6 +667,14 @@ func (e *Engine) runHost(ctx context.Context, log *EventLog, ex Execution, hr Ho
 		}
 	}
 	e.finishHost(log, hr.ID, status, reason, msg)
+}
+
+func (e *Engine) skipQueuedSteps(log *EventLog, steps []*StepRun, reason, msg string) {
+	for _, sr := range steps {
+		if sr.Status == "queued" {
+			e.finishStep(log, sr, "skipped", reason, nil, msg, 0, 0, false, 0)
+		}
+	}
 }
 
 func (e *Engine) finishHost(log *EventLog, hostRunID, status, reason, msg string) {
