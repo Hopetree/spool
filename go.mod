@@ -4,8 +4,10 @@ go 1.26.0
 
 require (
 	github.com/gin-gonic/gin v1.12.0
+	github.com/gliderlabs/ssh v0.3.8
 	github.com/jmoiron/sqlx v1.4.0
 	github.com/oklog/ulid/v2 v2.1.2
+	github.com/pkg/sftp v1.13.13
 	github.com/pressly/goose/v3 v3.30.2
 	golang.org/x/crypto v0.59.0
 	gopkg.in/yaml.v3 v3.0.1
@@ -13,6 +15,7 @@ require (
 )
 
 require (
+	github.com/anmitsu/go-shlex v0.0.0-20200514113438-38f4b401e2be // indirect
 	github.com/bytedance/gopkg v0.1.3 // indirect
 	github.com/bytedance/sonic v1.15.0 // indirect
 	github.com/bytedance/sonic/loader v0.5.0 // indirect
@@ -28,6 +31,7 @@ require (
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/klauspost/cpuid/v2 v2.3.0 // indirect
+	github.com/kr/fs v0.1.0 // indirect
 	github.com/leodido/go-urn v1.5.0 // indirect
 	github.com/mattn/go-isatty v0.0.24 // indirect
 	github.com/mfridman/interpolate v0.2.0 // indirect
