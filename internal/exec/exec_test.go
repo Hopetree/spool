@@ -64,7 +64,7 @@ func TestBuildEnvFile(t *testing.T) {
 func TestBuildRunScript(t *testing.T) {
 	step := Step{Type: "python", Interpreter: "python3", PrepareCommand: "pip install x", TimeoutSec: 30}
 	b := string(BuildRunScript(step, "script.py"))
-	for _, want := range []string{"echo $$ > .spool.pid", ". ./.spool-env", "pip install x", "exec python3 ./script.py"} {
+	for _, want := range []string{"echo $$ > .spool.pid", ". ./.spool-env", "pip install x", "exec python3 -u ./script.py"} {
 		if !strings.Contains(b, want) {
 			t.Fatalf("script missing %q:\n%s", want, b)
 		}

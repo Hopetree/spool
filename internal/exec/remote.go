@@ -47,7 +47,11 @@ func BuildRunScript(step Step, scriptName string) []byte {
 		b.WriteString(prepare)
 		b.WriteString("\n")
 	}
-	fmt.Fprintf(&b, "exec %s ./%s\n", step.Interpreter, scriptName)
+	interpreter := step.Interpreter
+	if step.Type == "python" {
+		interpreter += " -u"
+	}
+	fmt.Fprintf(&b, "exec %s ./%s\n", interpreter, scriptName)
 	return []byte(b.String())
 }
 

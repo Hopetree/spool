@@ -29,9 +29,11 @@ import {
   rollbackTool,
   setToolEnabled,
   type ToolReferenceFlow,
+  type ToolParam,
   type ToolReferenceSchedule,
   type ToolVersion,
 } from "../api/tools";
+import CodeEditor from "../components/CodeEditor";
 import ExecuteToolModal from "../components/ExecuteToolModal";
 import ExecutionTable from "../components/ExecutionTable";
 import { useAuthStore } from "../stores/auth";
@@ -314,6 +316,64 @@ export default function ToolDetail() {
           />
         )}
       </Card>
+
+      {detail && (
+        <Card title="脚本与参数" style={{ marginBottom: 16 }}>
+          <Typography.Text type="secondary">脚本内容</Typography.Text>
+          <div style={{ marginTop: 8, marginBottom: 16 }}>
+            <CodeEditor
+              language={detail.version.type}
+              value={detail.version.content}
+              readOnly
+              height="280px"
+            />
+          </div>
+          <Typography.Text type="secondary">准备命令</Typography.Text>
+          <pre
+            style={{
+              margin: "8px 0 16px",
+              padding: 8,
+              background: "#fafafa",
+              borderRadius: 4,
+              fontSize: 12,
+              whiteSpace: "pre-wrap",
+            }}
+          >
+            {detail.version.prepare_command || "（无）"}
+          </pre>
+          <Typography.Text type="secondary">参数</Typography.Text>
+          <Table<ToolParam>
+            rowKey="name"
+            dataSource={detail.version.params}
+            pagination={false}
+            size="small"
+            style={{ marginTop: 8 }}
+            columns={[
+              { title: "变量名", dataIndex: "name" },
+              { title: "显示名", dataIndex: "label" },
+              { title: "类型", dataIndex: "type", width: 90 },
+              {
+                title: "必填",
+                dataIndex: "required",
+                width: 80,
+                render: (v: boolean) => (v ? "是" : "否"),
+              },
+              { title: "默认值", dataIndex: "default" },
+              {
+                title: "候选项",
+                render: (_, p) => (p.options ?? []).join(", ") || "—",
+              },
+              {
+                title: "敏感",
+                dataIndex: "sensitive",
+                width: 80,
+                render: (v: boolean) => (v ? <Tag color="red">是</Tag> : "否"),
+              },
+              { title: "说明", dataIndex: "description", ellipsis: true },
+            ]}
+          />
+        </Card>
+      )}
 
       <Tabs
         defaultActiveKey="history"

@@ -897,6 +897,7 @@ func (e *Engine) runStep(ctx context.Context, log *EventLog, ex Execution, hr Ho
 	env["SPOOL_HOST_NAME"] = hr.HostName
 	env["SPOOL_TOOL_NAME"] = st.Name
 	env["SPOOL_TOOL_VERSION"] = strconv.Itoa(st.ToolVersionNo)
+	env["PYTHONUNBUFFERED"] = "1"
 
 	sink := &logSink{log: log, hostRunID: hr.ID, stepRunID: sr.ID, limit: e.cfg.OutputLimitBytes}
 	cmd := BuildCommand(dir, st, cap.Setsid, cap.Timeout)
