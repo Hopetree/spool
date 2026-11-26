@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Checkbox, Space } from "antd";
-import { listEvents, type ExecutionEvent, type ExecutionStatus } from "../api/executions";
-import ExecutionStatusTag from "./ExecutionStatusTag";
+import { listEvents, type ExecutionEvent } from "../api/executions";
 
 interface Line {
   seq: number;
@@ -21,7 +20,6 @@ export default function LogViewer({
   stepRunID?: string;
 }) {
   const [lines, setLines] = useState<Line[]>([]);
-  const [status, setStatus] = useState<ExecutionStatus>();
   const [follow, setFollow] = useState(true);
   const boxRef = useRef<HTMLDivElement>(null);
 
@@ -42,7 +40,6 @@ export default function LogViewer({
       try {
         const res = await listEvents(executionId, 0, 20000, hostRunID, stepRunID);
         if (cancelled) return;
-        setStatus(res.status);
         setLines(
           res.items
             .filter((ev) => ev.type === "log" && ev.data)
@@ -54,10 +51,6 @@ export default function LogViewer({
         const stepSuffix = stepRunID ? `&step_run=${stepRunID}` : "";
         source = new EventSource(`/api/v1/executions/${executionId}/stream?after_seq=${last}${suffix}${stepSuffix}`);
         source.addEventListener("log", (e) => append(JSON.parse((e as MessageEvent).data) as ExecutionEvent));
-        source.addEventListener("state", (e) => {
-          const ev = JSON.parse((e as MessageEvent).data) as ExecutionEvent;
-          if (ev.entity === "execution" && ev.status) setStatus(ev.status as ExecutionStatus);
-        });
         source.addEventListener("end", () => source?.close());
       } catch {
         // keep the viewer empty; the page shows request errors elsewhere
@@ -79,7 +72,6 @@ export default function LogViewer({
   return (
     <div>
       <Space style={{ marginBottom: 8 }}>
-        <ExecutionStatusTag status={status ?? ""} />
         <Checkbox checked={follow} onChange={(e) => setFollow(e.target.checked)}>
           自动滚动
         </Checkbox>

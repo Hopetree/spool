@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
 import {
   App as AntApp,
   Alert,
@@ -19,9 +19,12 @@ import {
   Controls,
   ReactFlow,
   type Connection,
+  type FinalConnectionState,
+  type OnConnectEnd,
   type OnEdgesChange,
   type OnNodesChange,
   type OnNodesDelete,
+  type ReactFlowInstance,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -194,6 +197,7 @@ export default function FlowEditor() {
   const [edges, setEdges] = useState<FlowRFEdge[]>([]);
   const [selectedNodeID, setSelectedNodeID] = useState<string>();
   const [selectedEdgeID, setSelectedEdgeID] = useState<string>();
+  const flowRef = useRef<ReactFlowInstance<FlowRFNode, FlowRFEdge> | null>(null);
 
   const { data: detail } = useQuery({
     queryKey: ["flow", id],
@@ -311,25 +315,54 @@ export default function FlowEditor() {
     [edges, message],
   );
 
-  const addNode = () => {
+  /** Creates a tool node at a flow position and opens its config drawer. */
+  const addNodeAt = useCallback((position: { x: number; y: number }, sourceID?: string) => {
     const nodeID = newID("n");
-    const rightMost = nodes.reduce((max, n) => Math.max(max, n.position.x), 0);
-    const x = rightMost + 260;
-    const y = 60 + (nodes.length % 5) * 110;
-    setNodes((prev) => [
-      ...prev,
-      {
-        id: nodeID,
-        type: "tool",
-        position: { x, y },
-        data: toolNodeData(),
-      },
-    ]);
-    setEdges((prev) => [
-      ...prev,
-      makeRFEdge({ id: newID("e"), source: "start", target: nodeID, condition: "always", value: "" }),
-    ]);
+    setNodes((prev) => [...prev, { id: nodeID, type: "tool", position, data: toolNodeData() }]);
+    if (sourceID) {
+      setEdges((prev) => [
+        ...prev,
+        makeRFEdge({
+          id: newID("e"),
+          source: sourceID,
+          target: nodeID,
+          condition: sourceID === "start" ? "always" : "success",
+          value: "",
+        }),
+      ]);
+    }
     setSelectedNodeID(nodeID);
+  }, []);
+
+  const addNode = () => {
+    const rightMost = nodes.reduce((max, n) => Math.max(max, n.position.x), 0);
+    addNodeAt({ x: rightMost + 260, y: 60 + (nodes.length % 5) * 110 }, "start");
+  };
+
+  // Drop a connection on empty canvas to create a connected node there.
+  const onConnectEnd: OnConnectEnd = useCallback(
+    (event, state: FinalConnectionState) => {
+      if (!state.fromHandle || state.fromHandle.nodeId === "" || state.isValid || state.toNode) return;
+      const handle = state.fromHandle;
+      if (handle.type !== "source") return;
+      const point = "changedTouches" in event ? event.changedTouches[0] : event;
+      if (!point) return;
+      const instance = flowRef.current;
+      if (!instance) return;
+      const position = instance.screenToFlowPosition({ x: point.clientX, y: point.clientY });
+      // Ignore a click on the handle without an actual drag.
+      if (Math.hypot(position.x - state.from.x, position.y - state.from.y) < 40) return;
+      addNodeAt({ x: position.x - 84, y: position.y - 24 }, handle.nodeId);
+    },
+    [addNodeAt],
+  );
+
+  const handleCanvasDoubleClick = (event: ReactMouseEvent<HTMLDivElement>) => {
+    if (!(event.target instanceof HTMLElement) || !event.target.classList.contains("react-flow__pane")) return;
+    const instance = flowRef.current;
+    if (!instance) return;
+    const position = instance.screenToFlowPosition({ x: event.clientX, y: event.clientY });
+    addNodeAt({ x: position.x - 84, y: position.y - 24 });
   };
 
   const removeNode = (nodeID: string) => {
@@ -496,20 +529,25 @@ export default function FlowEditor() {
           style={{ marginBottom: 16 }}
           extra={
             <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-              拖拽节点调整位置；从节点右侧圆点拖线到目标节点；点击节点/连线配置
+              双击空白画布新建节点；从节点右侧圆点拖到空白处可直接新建并连接；点击节点/连线配置
             </Typography.Text>
           }
         >
-          <div style={{ height: 620 }}>
+          <div style={{ height: 620 }} onDoubleClick={handleCanvasDoubleClick}>
             <ReactFlow
               className="light"
               nodes={nodes}
               edges={edges}
               nodeTypes={flowNodeTypes}
+              onInit={(instance) => {
+                flowRef.current = instance;
+              }}
               onNodesChange={onNodesChange}
               onEdgesChange={onEdgesChange}
               onNodesDelete={onNodesDelete}
               onConnect={onConnect}
+              onConnectEnd={onConnectEnd}
+              zoomOnDoubleClick={false}
               onNodeClick={(_, n) => {
                 setSelectedNodeID(n.id);
                 setSelectedEdgeID(undefined);

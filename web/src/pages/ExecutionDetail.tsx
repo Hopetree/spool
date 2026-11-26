@@ -5,7 +5,6 @@ import {
   Button,
   Card,
   Descriptions,
-  Drawer,
   Empty,
   Popconfirm,
   Space,
@@ -149,9 +148,26 @@ export default function ExecutionDetail() {
   const activeNodeStep = nodeSteps.find((s) => s.id === selectedStepID) ?? nodeSteps[0];
 
   const openNode = (nodeID: string) => {
+    if (displayGraph?.nodes.find((n) => n.id === nodeID)?.type !== "tool") return;
     setSelectedNodeID(nodeID);
     setSelectedStepID(undefined);
   };
+
+  // Keep a tool node selected so the detail panel always has content. Failures
+  // win over the first node so a problem run opens on the failing step.
+  useEffect(() => {
+    if (!displayGraph || data?.kind !== "flow") return;
+    const toolNodes = displayGraph.nodes.filter((n) => n.type === "tool");
+    if (toolNodes.length === 0) return;
+    setSelectedNodeID((prev) => {
+      if (prev && toolNodes.some((n) => n.id === prev)) return prev;
+      const preferred =
+        toolNodes.find((n) => nodeStatuses[n.id] === "failed") ??
+        toolNodes.find((n) => nodeStatuses[n.id] === "running") ??
+        toolNodes[0];
+      return preferred.id;
+    });
+  }, [displayGraph, data?.kind, nodeStatuses]);
 
   return (
     <div>
@@ -353,7 +369,7 @@ export default function ExecutionDetail() {
               title="执行流程图"
               extra={
                 <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                  节点颜色表示执行结果，灰色虚线为未执行分支；点击节点查看该节点的工具执行详情
+                  节点颜色表示执行结果，灰色虚线为未执行分支；点击节点查看该节点的工具执行输出
                 </Typography.Text>
               }
               style={{ marginBottom: 16 }}
@@ -361,12 +377,13 @@ export default function ExecutionDetail() {
               <ExecutionGraph
                 graph={displayGraph}
                 statusByNode={nodeStatuses}
-                height={420}
+                height={360}
                 onNodeClick={openNode}
               />
             </Card>
           )}
 
+          {!showGraph && (
           <Card title="主机" style={{ marginBottom: 16 }}>
             <Table<HostRun>
               rowKey="id"
@@ -394,167 +411,232 @@ export default function ExecutionDetail() {
               ]}
             />
           </Card>
+          )}
+
+          {showGraph &&
+            (graphNode ? (
+              <Card
+                title={`节点执行详情：${graphNode.name}`}
+                extra={
+                  <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                    运行中的执行会实时刷新
+                  </Typography.Text>
+                }
+                style={{ marginBottom: 16 }}
+              >
+                {graphNode.type === "start" ? (
+                  <Alert type="info" showIcon message="开始节点只用于触发后续分支，没有工具执行记录。" />
+                ) : (
+                  <>
+                    <Descriptions
+                      size="small"
+                      column={4}
+                      items={[
+                        { key: "tool", label: "工具", children: graphNode.tool_name || graphNode.tool_id || "—" },
+                        {
+                          key: "version",
+                          label: "版本",
+                          children: graphNode.tool_version_no ? `v${graphNode.tool_version_no}` : "—",
+                        },
+                        { key: "type", label: "类型", children: graphNode.tool_type || "—" },
+                        {
+                          key: "hosts",
+                          label: "执行主机",
+                          children: `${nodeSteps.filter((s) => s.status !== "skipped").length} / ${nodeSteps.length}`,
+                        },
+                      ]}
+                    />
+                    {nodeSteps.length === 0 ? (
+                      <Empty description="该节点没有执行记录" />
+                    ) : (
+                      <div style={{ display: "flex", gap: 16, alignItems: "flex-start" }}>
+                        <div style={{ width: 320, flex: "0 0 320px", maxHeight: 480, overflow: "auto" }}>
+                          {nodeSteps.map((step) => {
+                            const selected = step.id === activeNodeStep?.id;
+                            return (
+                              <div
+                                key={step.id}
+                                onClick={() => setSelectedStepID(step.id)}
+                                style={{
+                                  padding: "10px 12px",
+                                  marginBottom: 8,
+                                  borderRadius: 6,
+                                  cursor: "pointer",
+                                  border: selected ? "1px solid #1677ff" : "1px solid #f0f0f0",
+                                  background: selected ? "#f0f7ff" : "#fff",
+                                }}
+                              >
+                                <div
+                                  style={{
+                                    display: "flex",
+                                    justifyContent: "space-between",
+                                    gap: 8,
+                                    alignItems: "center",
+                                  }}
+                                >
+                                  <strong
+                                    style={{
+                                      overflow: "hidden",
+                                      textOverflow: "ellipsis",
+                                      whiteSpace: "nowrap",
+                                    }}
+                                  >
+                                    {hostName(step.host_run_id)}
+                                  </strong>
+                                  <ExecutionStatusTag status={step.status} />
+                                </div>
+                                <div style={{ fontSize: 12, color: "#8c8c8c", marginTop: 4 }}>
+                                  耗时 {duration(step.started_at, step.finished_at)}
+                                  {step.exit_code !== null &&
+                                    step.exit_code !== undefined &&
+                                    ` · 退出码 ${step.exit_code}`}
+                                  {step.attempt > 1 && ` · 尝试 ${step.attempt} 次`}
+                                  {step.truncated && " · 输出已截断"}
+                                </div>
+                                {step.error_message && (
+                                  <div
+                                    style={{
+                                      fontSize: 12,
+                                      color: "#cf1322",
+                                      marginTop: 4,
+                                      overflow: "hidden",
+                                      textOverflow: "ellipsis",
+                                      whiteSpace: "nowrap",
+                                    }}
+                                    title={step.error_message}
+                                  >
+                                    {step.error_message}
+                                  </div>
+                                )}
+                                {(step.status === "running" || step.status === "queued") && (
+                                  <div style={{ marginTop: 6 }}>
+                                    <Popconfirm
+                                      title="取消该主机的执行？"
+                                      onConfirm={(e) => {
+                                        e?.stopPropagation();
+                                        cancelHost.mutate(step.host_run_id);
+                                      }}
+                                    >
+                                      <Button size="small" danger onClick={(e) => e.stopPropagation()}>
+                                        取消该主机
+                                      </Button>
+                                    </Popconfirm>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          {activeNodeStep ? (
+                            <>
+                              <div
+                                style={{
+                                  display: "flex",
+                                  justifyContent: "space-between",
+                                  alignItems: "center",
+                                  gap: 8,
+                                  marginBottom: 8,
+                                }}
+                              >
+                                <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                                  {hostName(activeNodeStep.host_run_id)} 的节点输出 ·{" "}
+                                  {bytes(activeNodeStep.log_bytes)}
+                                </Typography.Text>
+                                <Button
+                                  size="small"
+                                  href={logDownloadUrl(id!, activeNodeStep.host_run_id, activeNodeStep.id)}
+                                  target="_blank"
+                                >
+                                  下载该节点日志
+                                </Button>
+                              </div>
+                              {activeNodeStep.error_message && (
+                                <Alert
+                                  type="error"
+                                  showIcon
+                                  message={activeNodeStep.error_message}
+                                  style={{ marginBottom: 8 }}
+                                />
+                              )}
+                              <LogViewer
+                                executionId={id!}
+                                active={!!active}
+                                hostRunID={activeNodeStep.host_run_id}
+                                stepRunID={activeNodeStep.id}
+                              />
+                            </>
+                          ) : (
+                            <Empty description="请选择一台主机查看输出" />
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
+              </Card>
+            ) : (
+              <Card style={{ marginBottom: 16 }}>
+                <Empty description="点击流程图中的节点查看该节点的执行输出" />
+              </Card>
+            ))}
 
           {!showGraph && (
-            <Card title="步骤" style={{ marginBottom: 16 }}>
-              <Table<StepRun>
-                rowKey="id"
-                dataSource={data?.step_runs ?? []}
-                pagination={false}
-                size="small"
-                columns={[
-                  { title: "主机", render: (_, r) => hostName(r.host_run_id) },
-                  { title: "步骤", dataIndex: "name" },
-                  { title: "状态", dataIndex: "status", render: (v: string) => <ExecutionStatusTag status={v} /> },
-                  {
-                    title: "退出码",
-                    dataIndex: "exit_code",
-                    width: 90,
-                    render: (v: number | null) => (v === null ? "—" : v),
-                  },
-                  { title: "尝试", dataIndex: "attempt", width: 70 },
-                  { title: "耗时", render: (_, r) => duration(r.started_at, r.finished_at) },
-                  {
-                    title: "输出",
-                    render: (_, r) => (
-                      <Space size={4}>
-                        <span>{bytes(r.log_bytes)}</span>
-                        {r.truncated && <Tag color="orange">已截断</Tag>}
-                      </Space>
-                    ),
-                  },
-                  { title: "错误", dataIndex: "error_message", ellipsis: true },
-                  {
-                    title: "日志",
-                    width: 90,
-                    render: (_, r) => (
-                      <Button size="small" href={id ? logDownloadUrl(id, r.host_run_id, r.id) : "#"} target="_blank">
-                        下载
-                      </Button>
-                    ),
-                  },
-                ]}
-              />
-            </Card>
-          )}
-
-          {id && (
-            <Card title="实时输出">
-              <LogViewer executionId={id} active={!!active} />
-            </Card>
-          )}
-        </>
-      )}
-
-      <Drawer
-        open={!!selectedNodeID && !!graphNode}
-        onClose={() => setSelectedNodeID(undefined)}
-        width={860}
-        title={
-          graphNode ? (
-            <Space>
-              <span>{graphNode.type === "start" ? "开始" : graphNode.name}</span>
-              {graphNode.type === "tool" && nodeStatuses[graphNode.id] && (
-                <ExecutionStatusTag status={nodeStatuses[graphNode.id]} />
-              )}
-            </Space>
-          ) : (
-            "节点详情"
-          )
-        }
-      >
-        {graphNode?.type === "start" && (
-          <Alert type="info" showIcon message="开始节点只用于触发后续分支，没有工具执行记录。" />
-        )}
-        {graphNode?.type === "tool" && (
-          <Space direction="vertical" size={12} style={{ width: "100%" }}>
-            <Descriptions
-              size="small"
-              column={2}
-              items={[
-                { key: "tool", label: "工具", children: graphNode.tool_name || graphNode.tool_id || "—" },
-                {
-                  key: "version",
-                  label: "版本",
-                  children: graphNode.tool_version_no ? `v${graphNode.tool_version_no}` : "—",
-                },
-                { key: "type", label: "类型", children: graphNode.tool_type || "—" },
-                {
-                  key: "hosts",
-                  label: "执行主机",
-                  children: `${nodeSteps.filter((s) => s.status !== "skipped").length} / ${nodeSteps.length}`,
-                },
-              ]}
-            />
-            {nodeSteps.length === 0 ? (
-              <Empty description="该节点没有执行记录" />
-            ) : (
-              <>
+            <>
+              <Card title="步骤" style={{ marginBottom: 16 }}>
                 <Table<StepRun>
                   rowKey="id"
-                  dataSource={nodeSteps}
+                  dataSource={data?.step_runs ?? []}
                   pagination={false}
                   size="small"
-                  rowClassName={(r) => (r.id === activeNodeStep?.id ? "ant-table-row-selected" : "")}
-                  onRow={(r) => ({ onClick: () => setSelectedStepID(r.id), style: { cursor: "pointer" } })}
                   columns={[
                     { title: "主机", render: (_, r) => hostName(r.host_run_id) },
+                    { title: "步骤", dataIndex: "name" },
                     { title: "状态", dataIndex: "status", render: (v: string) => <ExecutionStatusTag status={v} /> },
                     {
                       title: "退出码",
                       dataIndex: "exit_code",
-                      width: 80,
+                      width: 90,
                       render: (v: number | null) => (v === null ? "—" : v),
                     },
                     { title: "尝试", dataIndex: "attempt", width: 70 },
                     { title: "耗时", render: (_, r) => duration(r.started_at, r.finished_at) },
-                    { title: "输出", render: (_, r) => bytes(r.log_bytes) },
+                    {
+                      title: "输出",
+                      render: (_, r) => (
+                        <Space size={4}>
+                          <span>{bytes(r.log_bytes)}</span>
+                          {r.truncated && <Tag color="orange">已截断</Tag>}
+                        </Space>
+                      ),
+                    },
                     { title: "错误", dataIndex: "error_message", ellipsis: true },
+                    {
+                      title: "日志",
+                      width: 90,
+                      render: (_, r) => (
+                        <Button
+                          size="small"
+                          href={id ? logDownloadUrl(id, r.host_run_id, r.id) : "#"}
+                          target="_blank"
+                        >
+                          下载
+                        </Button>
+                      ),
+                    },
                   ]}
                 />
-                {activeNodeStep ? (
-                  <div>
-                    <div
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "center",
-                        gap: 8,
-                        marginBottom: 8,
-                      }}
-                    >
-                      <Typography.Text strong>{hostName(activeNodeStep.host_run_id)} 的输出</Typography.Text>
-                      <Button
-                        size="small"
-                        href={logDownloadUrl(id!, activeNodeStep.host_run_id, activeNodeStep.id)}
-                        target="_blank"
-                      >
-                        下载该节点日志
-                      </Button>
-                    </div>
-                    {activeNodeStep.error_message && (
-                      <Alert
-                        type="error"
-                        showIcon
-                        message={activeNodeStep.error_message}
-                        style={{ marginBottom: 8 }}
-                      />
-                    )}
-                    <LogViewer
-                      executionId={id!}
-                      active={!!active}
-                      hostRunID={activeNodeStep.host_run_id}
-                      stepRunID={activeNodeStep.id}
-                    />
-                  </div>
-                ) : (
-                  <Empty description="请选择一台主机查看输出" />
-                )}
-              </>
-            )}
-          </Space>
-        )}
-      </Drawer>
+              </Card>
+
+              {id && (
+                <Card title="实时输出">
+                  <LogViewer executionId={id} active={!!active} />
+                </Card>
+              )}
+            </>
+          )}
+        </>
+      )}
     </div>
   );
 }
