@@ -1,6 +1,7 @@
 package sshx
 
 import (
+	"bytes"
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
@@ -9,8 +10,10 @@ import (
 	"errors"
 	"io"
 	"net"
+	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -253,5 +256,53 @@ func TestSFTPSubsystem(t *testing.T) {
 	defer sc.Close()
 	if _, err := sc.Stat("/"); err != nil {
 		t.Fatalf("stat /: %v", err)
+	}
+}
+
+func TestRunStream(t *testing.T) {
+	h := newFakeHost(t)
+	c, err := Dial(context.Background(), h.target("tofu", h.fp))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	var mu sync.Mutex
+	var out, errOut bytes.Buffer
+	code, err := c.RunStream(context.Background(), "echo hi", func(b []byte) {
+		mu.Lock()
+		out.Write(b)
+		mu.Unlock()
+	}, func(b []byte) {
+		mu.Lock()
+		errOut.Write(b)
+		mu.Unlock()
+	})
+	if err != nil || code != 0 {
+		t.Fatalf("code=%d err=%v", code, err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if out.String() != "hi\n" || errOut.String() != "" {
+		t.Fatalf("out=%q err=%q", out.String(), errOut.String())
+	}
+}
+
+func TestUploadAndReadFile(t *testing.T) {
+	h := newFakeHost(t)
+	c, err := Dial(context.Background(), h.target("tofu", h.fp))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	p := filepath.Join(t.TempDir(), "script.sh")
+	if err := c.Upload(context.Background(), p, []byte("echo uploaded"), 0o600); err != nil {
+		t.Fatalf("upload: %v", err)
+	}
+	b, err := c.ReadFile(context.Background(), p)
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if string(b) != "echo uploaded" {
+		t.Fatalf("content = %q", b)
 	}
 }

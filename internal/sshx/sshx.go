@@ -5,8 +5,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net"
+	"os"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/pkg/sftp"
@@ -176,5 +179,106 @@ func (c *Client) Run(ctx context.Context, command string) (stdout, stderr []byte
 		_ = sess.Close()
 		<-done
 		return out.Bytes(), errBuf.Bytes(), -1, ctx.Err()
+	}
+}
+
+// Upload writes data to a remote path over SFTP.
+func (c *Client) Upload(ctx context.Context, path string, data []byte, mode os.FileMode) error {
+	sc, err := c.SFTP()
+	if err != nil {
+		return fmt.Errorf("sftp: %w", err)
+	}
+	defer sc.Close()
+	f, err := sc.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC)
+	if err != nil {
+		return fmt.Errorf("open remote file: %w", err)
+	}
+	defer f.Close()
+	if _, err := f.Write(data); err != nil {
+		return fmt.Errorf("write remote file: %w", err)
+	}
+	if err := f.Chmod(mode); err != nil {
+		return fmt.Errorf("chmod remote file: %w", err)
+	}
+	return nil
+}
+
+// ReadFile reads a remote file over SFTP.
+func (c *Client) ReadFile(ctx context.Context, path string) ([]byte, error) {
+	sc, err := c.SFTP()
+	if err != nil {
+		return nil, fmt.Errorf("sftp: %w", err)
+	}
+	defer sc.Close()
+	f, err := sc.Open(path)
+	if err != nil {
+		return nil, fmt.Errorf("open remote file: %w", err)
+	}
+	defer f.Close()
+	b, err := io.ReadAll(f)
+	if err != nil {
+		return nil, fmt.Errorf("read remote file: %w", err)
+	}
+	return b, nil
+}
+
+func pump(r io.Reader, fn func([]byte)) {
+	buf := make([]byte, 32*1024)
+	for {
+		n, err := r.Read(buf)
+		if n > 0 && fn != nil {
+			chunk := make([]byte, n)
+			copy(chunk, buf[:n])
+			fn(chunk)
+		}
+		if err != nil {
+			return
+		}
+	}
+}
+
+// RunStream executes a command and streams stdout/stderr chunks as they arrive.
+// A non-zero exit status is returned via exitCode, not err.
+func (c *Client) RunStream(ctx context.Context, command string, onStdout, onStderr func([]byte)) (int, error) {
+	sess, err := c.conn.NewSession()
+	if err != nil {
+		return -1, fmt.Errorf("new session: %w", err)
+	}
+	defer sess.Close()
+	stdout, err := sess.StdoutPipe()
+	if err != nil {
+		return -1, err
+	}
+	stderr, err := sess.StderrPipe()
+	if err != nil {
+		return -1, err
+	}
+	if err := sess.Start(command); err != nil {
+		return -1, fmt.Errorf("start: %w", err)
+	}
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() { defer wg.Done(); pump(stdout, onStdout) }()
+	go func() { defer wg.Done(); pump(stderr, onStderr) }()
+	done := make(chan error, 1)
+	go func() { done <- sess.Wait() }()
+
+	select {
+	case runErr := <-done:
+		wg.Wait()
+		if runErr == nil {
+			return 0, nil
+		}
+		var exitErr *xssh.ExitError
+		if errors.As(runErr, &exitErr) {
+			return exitErr.ExitStatus(), nil
+		}
+		return -1, fmt.Errorf("run: %w", runErr)
+	case <-ctx.Done():
+		_ = sess.Signal(xssh.SIGTERM)
+		_ = sess.Close()
+		<-done
+		wg.Wait()
+		return -1, ctx.Err()
 	}
 }

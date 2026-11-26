@@ -274,3 +274,13 @@ func (s *Service) Open(ctx context.Context, id string) (authType, username, secr
 	}
 	return r.AuthType, r.Username, string(secretBytes), string(passBytes), nil
 }
+
+// EncryptSensitive seals arbitrary sensitive values (e.g. execution params).
+func (s *Service) EncryptSensitive(plaintext []byte, aad string) ([]byte, error) {
+	return s.cipher.Encrypt(plaintext, aad)
+}
+
+// DecryptSensitive opens values sealed by EncryptSensitive.
+func (s *Service) DecryptSensitive(ciphertext []byte, aad string) ([]byte, error) {
+	return s.cipher.Decrypt(ciphertext, aad)
+}
