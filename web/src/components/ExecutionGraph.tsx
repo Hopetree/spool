@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { Background, Controls, ReactFlow } from "@xyflow/react";
+import { Background, Controls, MarkerType, ReactFlow } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { conditionLabel, type EdgeCondition } from "../api/flows";
 import type { ExecutionGraphData } from "../api/executions";
@@ -98,13 +98,23 @@ export default function ExecutionGraph({
     () =>
       graph.edges.map((e, i) => {
         const condition = (e.condition in conditionLabel ? e.condition : "always") as EdgeCondition;
-        return makeRFEdge({
+        const edge = makeRFEdge({
           id: `${e.from}-${e.to}-${i}`,
           source: e.from,
           target: e.to,
           condition,
           value: e.value ?? "",
         });
+        // A skipped target means this branch was not taken in this run.
+        if (statusByNode[e.to] === "skipped") {
+          return {
+            ...edge,
+            style: { ...edge.style, stroke: "#bfbfbf", strokeDasharray: "4 4", opacity: 0.7 },
+            markerEnd: { type: MarkerType.ArrowClosed, color: "#bfbfbf" },
+            labelStyle: { fontSize: 11, fill: "#bfbfbf" },
+          };
+        }
+        return edge;
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [graphKey],

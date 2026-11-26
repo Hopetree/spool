@@ -353,7 +353,7 @@ export default function ExecutionDetail() {
               title="执行流程图"
               extra={
                 <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                  节点颜色表示执行结果，点击节点查看该节点的工具执行详情
+                  节点颜色表示执行结果，灰色虚线为未执行分支；点击节点查看该节点的工具执行详情
                 </Typography.Text>
               }
               style={{ marginBottom: 16 }}

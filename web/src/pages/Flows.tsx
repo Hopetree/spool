@@ -83,7 +83,7 @@ export default function Flows() {
         dataSource={flows}
         columns={[
           { title: "名称", render: (_, r) => <Link to={`/flows/${r.id}`}>{r.name}</Link> },
-          { title: "节点", dataIndex: "node_count", width: 80 },
+          { title: "工具节点", dataIndex: "node_count", width: 90 },
           { title: "连线", dataIndex: "edge_count", width: 80 },
           {
             title: "状态",

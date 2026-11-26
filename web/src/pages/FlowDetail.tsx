@@ -78,7 +78,7 @@ export default function FlowDetail() {
         </Typography.Title>
         {detail && (
           <Typography.Text type="secondary">
-            {detail.node_count} 个节点 · {detail.edge_count} 条连线
+            {detail.nodes.length} 个节点 · {detail.edge_count} 条连线
           </Typography.Text>
         )}
         {canRun && <Button onClick={() => setExecOpen(true)}>执行</Button>}
