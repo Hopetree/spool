@@ -1,9 +1,10 @@
-import { App as AntApp, Button, Card, Form, Input, InputNumber, Select, Space, Switch, Typography } from "antd";
+import { App as AntApp, Button, Card, Form, Input, InputNumber, Select, Space, Switch } from "antd";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { ApiError } from "../api/client";
 import { runAdhoc } from "../api/executions";
 import { listHosts } from "../api/hosts";
+import PageHeader from "../components/PageHeader";
 
 interface FormValues {
   host_ids: string[];
@@ -32,11 +33,12 @@ export default function Adhoc() {
   });
 
   return (
-    <Card>
-      <Typography.Title level={4}>临时命令</Typography.Title>
-      <Typography.Paragraph type="secondary">
-        不创建工具，直接在一批主机上执行 shell 命令；执行记录与输出同样保留。
-      </Typography.Paragraph>
+    <div>
+      <PageHeader
+        title="临时命令"
+        subtitle="不创建工具，直接在一批主机上执行 shell 命令；执行记录与输出同样保留"
+      />
+      <Card>
       <Form<FormValues>
         form={form}
         layout="vertical"
@@ -70,6 +72,7 @@ export default function Adhoc() {
           执行
         </Button>
       </Form>
-    </Card>
+      </Card>
+    </div>
   );
 }

@@ -27,6 +27,7 @@ import {
 import { ApiError } from "../api/client";
 import { listTools } from "../api/tools";
 import ExecutionGraph from "../components/ExecutionGraph";
+import PageHeader from "../components/PageHeader";
 import ExecutionStatusTag from "../components/ExecutionStatusTag";
 import LogViewer from "../components/LogViewer";
 import { aggregateStatus } from "../components/status";
@@ -171,26 +172,42 @@ export default function ExecutionDetail() {
 
   return (
     <div>
-      <Space style={{ marginBottom: 16 }} wrap>
-        <Button onClick={() => navigate(backPath)}>返回列表</Button>
-        <Typography.Title level={4} style={{ margin: 0 }}>
-          {data?.name || "执行详情"}
-        </Typography.Title>
-        {data && <ExecutionStatusTag status={data.status} />}
-        {active && (
-          <Popconfirm title="确认取消本次执行？" onConfirm={() => cancel.mutate()}>
-            <Button danger loading={cancel.isPending}>
-              取消执行
+      <PageHeader
+        back={{ label: "返回列表", onClick: () => navigate(backPath) }}
+        title={data?.name || "执行详情"}
+        subtitle={
+          data ? (
+            <Space size={8}>
+              <ExecutionStatusTag status={data.status} />
+              <span>执行 ID {data.id}</span>
+            </Space>
+          ) : undefined
+        }
+        crumbs={[
+          {
+            title: data?.kind === "flow" ? "流程执行历史" : data?.kind === "adhoc" ? "临时命令历史" : "工具执行历史",
+            to: backPath,
+          },
+          { title: "执行详情" },
+        ]}
+        extra={
+          <>
+            {active && (
+              <Popconfirm title="确认取消本次执行？" onConfirm={() => cancel.mutate()}>
+                <Button danger loading={cancel.isPending}>
+                  取消执行
+                </Button>
+              </Popconfirm>
+            )}
+            <Button onClick={() => rerun.mutate()} loading={rerun.isPending}>
+              重新执行
             </Button>
-          </Popconfirm>
-        )}
-        <Button onClick={() => rerun.mutate()} loading={rerun.isPending}>
-          重新执行
-        </Button>
-        <Button href={id ? logDownloadUrl(id) : "#"} target="_blank">
-          下载全部日志
-        </Button>
-      </Space>
+            <Button href={id ? logDownloadUrl(id) : "#"} target="_blank">
+              下载全部日志
+            </Button>
+          </>
+        }
+      />
 
       <Card loading={isLoading} style={{ marginBottom: 16 }}>
         {data && (
@@ -198,7 +215,6 @@ export default function ExecutionDetail() {
             column={3}
             size="small"
             items={[
-              { key: "id", label: "执行 ID", children: data.id },
               { key: "operator", label: "操作人", children: data.created_by_name || data.created_by || "—" },
               {
                 key: "source",

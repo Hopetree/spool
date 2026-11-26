@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { App as AntApp, Button, Form, Input, Modal, Popconfirm, Select, Space, Switch, Table, Tag } from "antd";
+import { App as AntApp, Button, Form, Input, Modal, Select, Switch, Table, Tag } from "antd";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError } from "../api/client";
 import {
@@ -12,6 +12,8 @@ import {
   type ChannelInput,
   type ChannelType,
 } from "../api/notify";
+import PageHeader from "../components/PageHeader";
+import RowActions from "../components/RowActions";
 
 const typeLabel: Record<ChannelType, string> = {
   webhook: "通用 Webhook",
@@ -69,11 +71,15 @@ export default function Channels() {
 
   return (
     <div>
-      <Space style={{ marginBottom: 16 }}>
-        <Button type="primary" onClick={openCreate}>
-          新增渠道
-        </Button>
-      </Space>
+      <PageHeader
+        title="通知渠道"
+        subtitle={`共 ${data.length} 个`}
+        extra={
+          <Button type="primary" onClick={openCreate}>
+            新增渠道
+          </Button>
+        }
+      />
       <Table<Channel>
         rowKey="id"
         size="small"
@@ -101,20 +107,22 @@ export default function Channels() {
           },
           {
             title: "操作",
+            width: 150,
             render: (_, r) => (
-              <Space>
-                <Button size="small" loading={test.isPending} onClick={() => test.mutate(r.id)}>
-                  测试
-                </Button>
-                <Button size="small" onClick={() => openEdit(r)}>
-                  编辑
-                </Button>
-                <Popconfirm title="确认删除该渠道？" onConfirm={() => remove.mutate(r.id)}>
-                  <Button size="small" danger>
-                    删除
-                  </Button>
-                </Popconfirm>
-              </Space>
+              <RowActions
+                inline={2}
+                actions={[
+                  { key: "test", label: "测试", loading: test.isPending, onClick: () => test.mutate(r.id) },
+                  { key: "edit", label: "编辑", onClick: () => openEdit(r) },
+                  {
+                    key: "delete",
+                    label: "删除",
+                    danger: true,
+                    onClick: () => remove.mutate(r.id),
+                    confirm: { title: "确认删除该渠道？" },
+                  },
+                ]}
+              />
             ),
           },
         ]}

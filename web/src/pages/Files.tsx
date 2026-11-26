@@ -18,6 +18,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import dayjs from "dayjs";
 import { ApiError } from "../api/client";
+import PageHeader from "../components/PageHeader";
 import { listHosts } from "../api/hosts";
 import {
   cancelTransfer,
@@ -302,12 +303,15 @@ export default function Files() {
   );
 
   return (
-    <Tabs
-      items={[
+    <div>
+      <PageHeader title="文件分发" subtitle="上传文件到多台主机，或从主机下载文件" />
+      <Tabs
+        items={[
         { key: "upload", label: "上传分发", children: canOperate ? uploadTab : <Card>无操作权限</Card> },
         { key: "download", label: "从主机下载", children: canOperate ? downloadTab : <Card>无操作权限</Card> },
-        { key: "history", label: "传输历史", children: historyTab },
-      ]}
-    />
+          { key: "history", label: "传输历史", children: historyTab },
+        ]}
+      />
+    </div>
   );
 }

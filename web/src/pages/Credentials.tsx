@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { App as AntApp, Button, Form, Input, Modal, Popconfirm, Select, Space, Table, Tag } from "antd";
+import { App as AntApp, Button, Form, Input, Modal, Select, Table, Tag } from "antd";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError } from "../api/client";
 import {
@@ -11,6 +11,8 @@ import {
   type Credential,
   type CredentialInput,
 } from "../api/credentials";
+import PageHeader from "../components/PageHeader";
+import RowActions from "../components/RowActions";
 
 const typeLabel: Record<AuthType, string> = { password: "密码", private_key: "私钥" };
 
@@ -66,11 +68,15 @@ export default function Credentials() {
 
   return (
     <div>
-      <Space style={{ marginBottom: 16 }}>
-        <Button type="primary" onClick={openCreate}>
-          新增凭据
-        </Button>
-      </Space>
+      <PageHeader
+        title="凭据"
+        subtitle={`共 ${data.length} 个`}
+        extra={
+          <Button type="primary" onClick={openCreate}>
+            新增凭据
+          </Button>
+        }
+      />
       <Table<Credential>
         rowKey="id"
         size="small"
@@ -92,21 +98,21 @@ export default function Credentials() {
           { title: "描述", dataIndex: "description" },
           {
             title: "操作",
+            width: 130,
             render: (_, record) => (
-              <Space>
-                <Button size="small" onClick={() => openEdit(record)}>
-                  编辑
-                </Button>
-                <Popconfirm
-                  title="确认删除该凭据？"
-                  description="被主机引用时无法删除。"
-                  onConfirm={() => remove.mutate(record.id)}
-                >
-                  <Button size="small" danger>
-                    删除
-                  </Button>
-                </Popconfirm>
-              </Space>
+              <RowActions
+                inline={2}
+                actions={[
+                  { key: "edit", label: "编辑", onClick: () => openEdit(record) },
+                  {
+                    key: "delete",
+                    label: "删除",
+                    danger: true,
+                    onClick: () => remove.mutate(record.id),
+                    confirm: { title: "确认删除该凭据？", description: "被主机引用时无法删除。" },
+                  },
+                ]}
+              />
             ),
           },
         ]}

@@ -36,6 +36,7 @@ import {
 import CodeEditor from "../components/CodeEditor";
 import ExecuteToolModal from "../components/ExecuteToolModal";
 import ExecutionTable from "../components/ExecutionTable";
+import PageHeader from "../components/PageHeader";
 import { useAuthStore } from "../stores/auth";
 
 export default function ToolDetail() {
@@ -317,41 +318,40 @@ export default function ToolDetail() {
 
   return (
     <div>
-      <Space style={{ marginBottom: 16 }} wrap>
-        <Button onClick={() => navigate("/tools")}>返回列表</Button>
-        <Typography.Title level={4} style={{ margin: 0 }}>
-          {detail?.name ?? "工具"}
-        </Typography.Title>
-        {detail && (
-          <Typography.Text type="secondary">
-            {detail.category || "默认"} · v{detail.version_no}
-          </Typography.Text>
-        )}
-        {canRun && <Button onClick={() => setExecOpen(true)}>执行</Button>}
-        {isAdmin && <Button onClick={() => navigate(`/tools/${id}/edit`)}>编辑</Button>}
-        {isAdmin && (
-          <Button loading={clone.isPending} onClick={() => clone.mutate()}>
-            克隆
-          </Button>
-        )}
-        {isAdmin && (
-          <Space size={4}>
-            <span>启用</span>
-            <Switch
-              checked={detail?.enabled}
-              loading={toggleEnabled.isPending}
-              onChange={(v) => toggleEnabled.mutate(v)}
-            />
-          </Space>
-        )}
-        {isAdmin && (
-          <Popconfirm title="确认删除该工具？" onConfirm={() => removeTool.mutate()}>
-            <Button danger loading={removeTool.isPending}>
-              删除工具
-            </Button>
-          </Popconfirm>
-        )}
-      </Space>
+      <PageHeader
+        back={{ label: "返回列表", onClick: () => navigate("/tools") }}
+        title={detail?.name ?? "工具"}
+        subtitle={detail ? `${detail.category || "默认"} · v${detail.version_no}` : undefined}
+        crumbs={[{ title: "工具", to: "/tools" }, { title: "工具详情" }]}
+        extra={
+          <>
+            {canRun && <Button onClick={() => setExecOpen(true)}>执行</Button>}
+            {isAdmin && <Button onClick={() => navigate(`/tools/${id}/edit`)}>编辑</Button>}
+            {isAdmin && (
+              <Button loading={clone.isPending} onClick={() => clone.mutate()}>
+                克隆
+              </Button>
+            )}
+            {isAdmin && (
+              <Space size={4}>
+                <span>启用</span>
+                <Switch
+                  checked={detail?.enabled}
+                  loading={toggleEnabled.isPending}
+                  onChange={(v) => toggleEnabled.mutate(v)}
+                />
+              </Space>
+            )}
+            {isAdmin && (
+              <Popconfirm title="确认删除该工具？" onConfirm={() => removeTool.mutate()}>
+                <Button danger loading={removeTool.isPending}>
+                  删除工具
+                </Button>
+              </Popconfirm>
+            )}
+          </>
+        }
+      />
 
       <Card loading={isLoading} style={{ marginBottom: 16 }}>
         {detail && (

@@ -1,12 +1,14 @@
-import { Card, Typography } from "antd";
+import { Card } from "antd";
 import ExecutionTable from "../components/ExecutionTable";
+import PageHeader from "../components/PageHeader";
 
 export default function AdhocHistory() {
   return (
-    <Card>
-      <Typography.Title level={4}>临时命令历史</Typography.Title>
-      <Typography.Paragraph type="secondary">这里仅显示临时命令的执行记录。</Typography.Paragraph>
-      <ExecutionTable kind="adhoc" showFilters />
-    </Card>
+    <div>
+      <PageHeader title="临时命令历史" subtitle="仅显示临时命令的执行记录" />
+      <Card>
+        <ExecutionTable kind="adhoc" showFilters />
+      </Card>
+    </div>
   );
 }

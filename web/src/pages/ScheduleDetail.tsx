@@ -7,7 +7,6 @@ import {
   Space,
   Switch,
   Tag,
-  Typography,
 } from "antd";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams } from "react-router-dom";
@@ -22,6 +21,7 @@ import {
   setScheduleEnabled,
 } from "../api/schedules";
 import ExecutionTable from "../components/ExecutionTable";
+import PageHeader from "../components/PageHeader";
 import { useAuthStore } from "../stores/auth";
 
 const policyLabel: Record<string, string> = { skip: "上次未完成则跳过", queue: "排队执行" };
@@ -91,32 +91,35 @@ export default function ScheduleDetail() {
 
   return (
     <div>
-      <Space style={{ marginBottom: 16 }} wrap>
-        <Button onClick={() => navigate("/schedules")}>返回列表</Button>
-        <Typography.Title level={4} style={{ margin: 0 }}>
-          {detail?.name ?? "定时任务"}
-        </Typography.Title>
-        {detail && <Tag>{detail.cron_expr}</Tag>}
-        {canRun && (
-          <Button loading={run.isPending} onClick={() => run.mutate()}>
-            立即执行
-          </Button>
-        )}
-        {isAdmin && <Button onClick={() => navigate(`/schedules/${id}/edit`)}>编辑</Button>}
-        {isAdmin && (
-          <Space size={4}>
-            <span>启用</span>
-            <Switch checked={detail?.enabled} loading={toggle.isPending} onChange={(v) => toggle.mutate(v)} />
-          </Space>
-        )}
-        {isAdmin && (
-          <Popconfirm title="确认删除该定时任务？" onConfirm={() => remove.mutate()}>
-            <Button danger loading={remove.isPending}>
-              删除任务
-            </Button>
-          </Popconfirm>
-        )}
-      </Space>
+      <PageHeader
+        back={{ label: "返回列表", onClick: () => navigate("/schedules") }}
+        title={detail?.name ?? "定时任务"}
+        subtitle={detail?.cron_expr}
+        crumbs={[{ title: "自动化", to: "/schedules" }, { title: "定时任务详情" }]}
+        extra={
+          <>
+            {canRun && (
+              <Button loading={run.isPending} onClick={() => run.mutate()}>
+                立即执行
+              </Button>
+            )}
+            {isAdmin && <Button onClick={() => navigate(`/schedules/${id}/edit`)}>编辑</Button>}
+            {isAdmin && (
+              <Space size={4}>
+                <span>启用</span>
+                <Switch checked={detail?.enabled} loading={toggle.isPending} onChange={(v) => toggle.mutate(v)} />
+              </Space>
+            )}
+            {isAdmin && (
+              <Popconfirm title="确认删除该定时任务？" onConfirm={() => remove.mutate()}>
+                <Button danger loading={remove.isPending}>
+                  删除任务
+                </Button>
+              </Popconfirm>
+            )}
+          </>
+        }
+      />
 
       <Card loading={isLoading} style={{ marginBottom: 16 }}>
         {detail && (

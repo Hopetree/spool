@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { App as AntApp, Button, Form, Input, Modal, Popconfirm, Space, Table } from "antd";
+import { App as AntApp, Button, Form, Input, Modal, Table } from "antd";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError } from "../api/client";
 import {
@@ -10,6 +10,8 @@ import {
   type GroupInput,
   type HostGroup,
 } from "../api/groups";
+import PageHeader from "../components/PageHeader";
+import RowActions from "../components/RowActions";
 
 export default function Groups() {
   const qc = useQueryClient();
@@ -55,11 +57,15 @@ export default function Groups() {
 
   return (
     <div>
-      <Space style={{ marginBottom: 16 }}>
-        <Button type="primary" onClick={openCreate}>
-          新增分组
-        </Button>
-      </Space>
+      <PageHeader
+        title="分组管理"
+        subtitle={`共 ${data.length} 个分组`}
+        extra={
+          <Button type="primary" onClick={openCreate}>
+            新增分组
+          </Button>
+        }
+      />
       <Table<HostGroup>
         rowKey="id"
         size="small"
@@ -71,21 +77,21 @@ export default function Groups() {
           { title: "主机数", dataIndex: "host_count" },
           {
             title: "操作",
+            width: 120,
             render: (_, record) => (
-              <Space>
-                <Button size="small" onClick={() => openEdit(record)}>
-                  编辑
-                </Button>
-                <Popconfirm
-                  title="确认删除该分组？"
-                  description="组内主机将变为未分组。"
-                  onConfirm={() => remove.mutate(record.id)}
-                >
-                  <Button size="small" danger>
-                    删除
-                  </Button>
-                </Popconfirm>
-              </Space>
+              <RowActions
+                inline={2}
+                actions={[
+                  { key: "edit", label: "编辑", onClick: () => openEdit(record) },
+                  {
+                    key: "delete",
+                    label: "删除",
+                    danger: true,
+                    onClick: () => remove.mutate(record.id),
+                    confirm: { title: "确认删除该分组？", description: "组内主机将变为未分组。" },
+                  },
+                ]}
+              />
             ),
           },
         ]}

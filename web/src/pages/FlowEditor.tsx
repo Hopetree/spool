@@ -51,6 +51,7 @@ import {
   type FlowRFEdge,
   type FlowRFNode,
 } from "../components/FlowGraphParts";
+import PageHeader from "../components/PageHeader";
 import { useAuthStore } from "../stores/auth";
 
 interface ParamForm {
@@ -450,19 +451,20 @@ export default function FlowEditor() {
 
   return (
     <div>
-      <Space style={{ marginBottom: 16 }} wrap>
-        <Button onClick={() => navigate(isNew ? "/flows" : `/flows/${id}`)}>返回</Button>
-        <Typography.Title level={4} style={{ margin: 0 }}>
-          {isNew ? "新建流程" : `编辑流程：${detail?.name ?? ""}`}
-        </Typography.Title>
-        <Button onClick={addNode}>添加工具节点</Button>
-        <Typography.Text type="secondary">
-          {nodeCount} 个节点 · {edgeCount} 条连线
-        </Typography.Text>
-        <Button type="primary" loading={save.isPending} onClick={() => form.submit()}>
-          保存流程
-        </Button>
-      </Space>
+      <PageHeader
+        back={{ label: "返回", onClick: () => navigate(isNew ? "/flows" : `/flows/${id}`) }}
+        title={isNew ? "新建流程" : `编辑流程：${detail?.name ?? ""}`}
+        subtitle={`${nodeCount} 个节点 · ${edgeCount} 条连线`}
+        crumbs={[{ title: "流程", to: "/flows" }, { title: isNew ? "新建流程" : "编辑流程" }]}
+        extra={
+          <>
+            <Button onClick={addNode}>添加工具节点</Button>
+            <Button type="primary" loading={save.isPending} onClick={() => form.submit()}>
+              保存流程
+            </Button>
+          </>
+        }
+      />
 
       <Form<FormValues>
         form={form}

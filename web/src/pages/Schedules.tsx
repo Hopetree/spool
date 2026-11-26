@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { App as AntApp, Button, Input, Popconfirm, Select, Space, Switch, Table, Tag } from "antd";
+import { App as AntApp, Button, Card, Input, Select, Space, Switch, Table, Tag } from "antd";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "react-router-dom";
 import dayjs from "dayjs";
@@ -11,6 +11,8 @@ import {
   setScheduleEnabled,
   type Schedule,
 } from "../api/schedules";
+import PageHeader from "../components/PageHeader";
+import RowActions from "../components/RowActions";
 import { useAuthStore } from "../stores/auth";
 
 export default function Schedules() {
@@ -64,25 +66,34 @@ export default function Schedules() {
 
   return (
     <div>
-      <Space style={{ marginBottom: 16 }} wrap>
-        <Input.Search allowClear placeholder="任务名称" style={{ width: 220 }} onSearch={setKeyword} />
-        <Select
-          allowClear
-          placeholder="状态"
-          style={{ width: 110 }}
-          value={enabled}
-          onChange={setEnabled}
-          options={[
-            { value: "true", label: "启用" },
-            { value: "false", label: "停用" },
-          ]}
-        />
-        {isAdmin && (
-          <Button type="primary" onClick={() => navigate("/schedules/new")}>
-            新建定时任务
-          </Button>
-        )}
-      </Space>
+      <PageHeader
+        title="定时任务"
+        subtitle={`共 ${items.length} 个`}
+        extra={
+          isAdmin && (
+            <Button type="primary" onClick={() => navigate("/schedules/new")}>
+              新建定时任务
+            </Button>
+          )
+        }
+      />
+
+      <Card size="small" style={{ marginBottom: 16 }} styles={{ body: { padding: 12 } }}>
+        <Space wrap>
+          <Input.Search allowClear placeholder="任务名称" style={{ width: 220 }} onSearch={setKeyword} />
+          <Select
+            allowClear
+            placeholder="状态"
+            style={{ width: 110 }}
+            value={enabled}
+            onChange={setEnabled}
+            options={[
+              { value: "true", label: "启用" },
+              { value: "false", label: "停用" },
+            ]}
+          />
+        </Space>
+      </Card>
 
       <Table<Schedule>
         rowKey="id"
@@ -95,7 +106,9 @@ export default function Schedules() {
             title: "执行对象",
             render: (_, r) => (
               <Space size={4}>
-                <Tag color={r.target_kind === "flow" ? "purple" : "geekblue"}>{r.target_kind}</Tag>
+                <Tag color={r.target_kind === "flow" ? "purple" : "geekblue"}>
+                  {r.target_kind === "flow" ? "流程" : "工具"}
+                </Tag>
                 {r.target_name || r.target_ref_id}
               </Space>
             ),
@@ -128,26 +141,30 @@ export default function Schedules() {
           },
           {
             title: "操作",
+            width: 190,
             render: (_, r) => (
-              <Space>
-                {canRun && (
-                  <Button size="small" loading={run.isPending} onClick={() => run.mutate(r.id)}>
-                    立即执行
-                  </Button>
-                )}
-                {isAdmin && (
-                  <Button size="small" onClick={() => navigate(`/schedules/${r.id}/edit`)}>
-                    编辑
-                  </Button>
-                )}
-                {isAdmin && (
-                  <Popconfirm title="确认删除该定时任务？" onConfirm={() => remove.mutate(r.id)}>
-                    <Button size="small" danger>
-                      删除
-                    </Button>
-                  </Popconfirm>
-                )}
-              </Space>
+              <RowActions
+                inline={2}
+                actions={[
+                  ...(canRun
+                    ? [{ key: "run", label: "立即执行", loading: run.isPending, onClick: () => run.mutate(r.id) }]
+                    : []),
+                  ...(isAdmin
+                    ? [{ key: "edit", label: "编辑", onClick: () => navigate(`/schedules/${r.id}/edit`) }]
+                    : []),
+                  ...(isAdmin
+                    ? [
+                        {
+                          key: "delete",
+                          label: "删除",
+                          danger: true,
+                          onClick: () => remove.mutate(r.id),
+                          confirm: { title: "确认删除该定时任务？" },
+                        },
+                      ]
+                    : []),
+                ]}
+              />
             ),
           },
         ]}

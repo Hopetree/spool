@@ -1,6 +1,7 @@
 import { useState } from "react";
-import { Input, Space, Table, Tag, Tooltip, Typography } from "antd";
+import { Card, Input, Space, Table, Tag, Tooltip, Typography } from "antd";
 import { useQuery } from "@tanstack/react-query";
+import PageHeader from "../components/PageHeader";
 import dayjs from "dayjs";
 import { listAudit, type AuditRecord } from "../api/audit";
 
@@ -24,11 +25,14 @@ export default function Audit() {
 
   return (
     <div>
-      <Space style={{ marginBottom: 16 }} wrap>
-        <Input.Search allowClear placeholder="操作，如 host.create" style={{ width: 240 }} onSearch={setAction} />
-        <Input.Search allowClear placeholder="用户 ID" style={{ width: 240 }} onSearch={setActor} />
-        <Typography.Text type="secondary">审计日志只读，保留 180 天</Typography.Text>
-      </Space>
+      <PageHeader title="审计日志" subtitle="只读，保留 180 天" />
+      <Card size="small" style={{ marginBottom: 16 }} styles={{ body: { padding: 12 } }}>
+        <Space wrap>
+          <Input.Search allowClear placeholder="操作，如 host.create" style={{ width: 240 }} onSearch={setAction} />
+          <Input.Search allowClear placeholder="用户 ID" style={{ width: 240 }} onSearch={setActor} />
+          <Typography.Text type="secondary">审计日志只读，保留 180 天</Typography.Text>
+        </Space>
+      </Card>
       <Table<AuditRecord>
         rowKey="id"
         size="small"

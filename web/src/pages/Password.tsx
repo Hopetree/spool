@@ -1,6 +1,7 @@
 import { App as AntApp, Button, Card, Form, Input } from "antd";
 import { useNavigate } from "react-router-dom";
 import { ApiError } from "../api/client";
+import PageHeader from "../components/PageHeader";
 import { useAuthStore } from "../stores/auth";
 
 interface PasswordForm {
@@ -25,7 +26,9 @@ export default function Password() {
   };
 
   return (
-    <Card title="修改密码" style={{ maxWidth: 460 }}>
+    <div style={{ maxWidth: 460 }}>
+      <PageHeader title="修改密码" />
+      <Card>
       <Form<PasswordForm> layout="vertical" onFinish={onFinish} autoComplete="off">
         <Form.Item label="原密码" name="old_password" rules={[{ required: true, message: "请输入原密码" }]}>
           <Input.Password />
@@ -66,6 +69,7 @@ export default function Password() {
           保存
         </Button>
       </Form>
-    </Card>
+      </Card>
+    </div>
   );
 }

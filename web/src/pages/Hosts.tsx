@@ -3,12 +3,12 @@ import {
   Alert,
   App as AntApp,
   Button,
+  Card,
   Descriptions,
   Form,
   Input,
   InputNumber,
   Modal,
-  Popconfirm,
   Select,
   Space,
   Switch,
@@ -32,6 +32,8 @@ import {
   type HostInput,
   type HostTestResult,
 } from "../api/hosts";
+import PageHeader from "../components/PageHeader";
+import RowActions from "../components/RowActions";
 import { useAuthStore } from "../stores/auth";
 
 interface Filters {
@@ -156,7 +158,25 @@ export default function Hosts() {
 
   return (
     <div>
-      <Space wrap style={{ marginBottom: 16 }}>
+      <PageHeader
+        title="主机列表"
+        subtitle={`共 ${data?.total ?? hosts.length} 台`}
+        extra={
+          <>
+            {isAdmin && (
+              <Button type="primary" onClick={() => openEdit(null)}>
+                新增主机
+              </Button>
+            )}
+            <Link to="/hosts/groups">
+              <Button>分组管理</Button>
+            </Link>
+          </>
+        }
+      />
+
+      <Card size="small" style={{ marginBottom: 16 }} styles={{ body: { padding: 12 } }}>
+        <Space wrap>
         <Select
           allowClear
           placeholder="分组"
@@ -189,15 +209,8 @@ export default function Hosts() {
           style={{ width: 200 }}
           onSearch={(v) => setFilters((f) => ({ ...f, keyword: v }))}
         />
-        {isAdmin && (
-          <Button type="primary" onClick={() => openEdit(null)}>
-            新增主机
-          </Button>
-        )}
-        <Link to="/hosts/groups">
-          <Button>分组管理</Button>
-        </Link>
-      </Space>
+        </Space>
+      </Card>
 
       <Table<Host>
         rowKey="id"
@@ -240,26 +253,35 @@ export default function Hosts() {
           },
           {
             title: "操作",
+            width: 170,
             render: (_, r) => (
-              <Space>
-                {canOperate && (
-                  <Button size="small" loading={test.isPending && test.variables === r.id} onClick={() => test.mutate(r.id)}>
-                    测试
-                  </Button>
-                )}
-                {isAdmin && (
-                  <Button size="small" onClick={() => openEdit(r)}>
-                    编辑
-                  </Button>
-                )}
-                {isAdmin && (
-                  <Popconfirm title="确认删除该主机？" onConfirm={() => remove.mutate(r.id)}>
-                    <Button size="small" danger>
-                      删除
-                    </Button>
-                  </Popconfirm>
-                )}
-              </Space>
+              <RowActions
+                inline={2}
+                actions={[
+                  ...(canOperate
+                    ? [
+                        {
+                          key: "test",
+                          label: "测试",
+                          loading: test.isPending && test.variables === r.id,
+                          onClick: () => test.mutate(r.id),
+                        },
+                      ]
+                    : []),
+                  ...(isAdmin ? [{ key: "edit", label: "编辑", onClick: () => openEdit(r) }] : []),
+                  ...(isAdmin
+                    ? [
+                        {
+                          key: "delete",
+                          label: "删除",
+                          danger: true,
+                          onClick: () => remove.mutate(r.id),
+                          confirm: { title: "确认删除该主机？" },
+                        },
+                      ]
+                    : []),
+                ]}
+              />
             ),
           },
         ]}

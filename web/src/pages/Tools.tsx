@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { App as AntApp, Button, Card, Input, Popconfirm, Select, Space, Switch, Table, Tag, Tree } from "antd";
+import { App as AntApp, Button, Card, Input, Select, Space, Switch, Table, Tag, Tree } from "antd";
 import type { DataNode } from "antd/es/tree";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "react-router-dom";
@@ -15,6 +15,8 @@ import {
   type ToolSummary,
 } from "../api/tools";
 import ExecuteToolModal from "../components/ExecuteToolModal";
+import PageHeader from "../components/PageHeader";
+import RowActions from "../components/RowActions";
 import { useAuthStore } from "../stores/auth";
 
 interface CatNode {
@@ -169,40 +171,50 @@ export default function Tools() {
   });
 
   return (
-    <div style={{ display: "flex", gap: 16, alignItems: "flex-start" }}>
-      <Card size="small" style={{ width: 260, flex: "0 0 260px" }} title="分类">
-        <Input.Search allowClear placeholder="搜索分类" style={{ marginBottom: 8 }} onChange={(e) => setSearch(e.target.value)} />
-        <Tree
-          treeData={treeData}
-          defaultExpandAll
-          blockNode
-          selectedKeys={[selected]}
-          onSelect={(keys) => setSelected(String(keys[0] ?? "all"))}
-        />
-      </Card>
-
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <Space style={{ marginBottom: 16 }} wrap>
-          <Input.Search allowClear placeholder="名称或描述" style={{ width: 220 }} onSearch={setKeyword} />
-          <Select
-            allowClear
-            placeholder="状态"
-            style={{ width: 110 }}
-            value={enabled}
-            onChange={setEnabled}
-            options={[
-              { value: "true", label: "启用" },
-              { value: "false", label: "停用" },
-            ]}
-          />
-          {isAdmin && (
+    <div>
+      <PageHeader
+        title="工具列表"
+        subtitle={`共 ${tools.length} 个`}
+        extra={
+          isAdmin && (
             <Button type="primary" onClick={() => navigate("/tools/new")}>
               新建工具
             </Button>
-          )}
-        </Space>
+          )
+        }
+      />
 
-        <Table<ToolSummary>
+      <div style={{ display: "flex", gap: 16, alignItems: "flex-start" }}>
+        <Card size="small" style={{ width: 260, flex: "0 0 260px" }} title="分类">
+          <Input.Search allowClear placeholder="搜索分类" style={{ marginBottom: 8 }} onChange={(e) => setSearch(e.target.value)} />
+          <Tree
+            treeData={treeData}
+            defaultExpandAll
+            blockNode
+            selectedKeys={[selected]}
+            onSelect={(keys) => setSelected(String(keys[0] ?? "all"))}
+          />
+        </Card>
+
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <Card size="small" style={{ marginBottom: 16 }} styles={{ body: { padding: 12 } }}>
+            <Space wrap>
+              <Input.Search allowClear placeholder="名称或描述" style={{ width: 220 }} onSearch={setKeyword} />
+              <Select
+                allowClear
+                placeholder="状态"
+                style={{ width: 110 }}
+                value={enabled}
+                onChange={setEnabled}
+                options={[
+                  { value: "true", label: "启用" },
+                  { value: "false", label: "停用" },
+                ]}
+              />
+            </Space>
+          </Card>
+
+          <Table<ToolSummary>
           rowKey="id"
           size="small"
           loading={isLoading}
@@ -249,40 +261,43 @@ export default function Tools() {
             },
             {
               title: "操作",
-              width: 220,
+              width: 180,
               render: (_, r) => (
-                <Space size={4} wrap={false}>
-                  {canRun && (
-                    <Button size="small" onClick={() => setExecTool(r)}>
-                      执行
-                    </Button>
-                  )}
-                  {isAdmin && (
-                    <Button size="small" onClick={() => navigate(`/tools/${r.id}/edit`)}>
-                      编辑
-                    </Button>
-                  )}
-                  {isAdmin && (
-                    <Button size="small" loading={copy.isPending} onClick={() => copy.mutate(r.id)}>
-                      克隆
-                    </Button>
-                  )}
-                  {isAdmin && (
-                    <Popconfirm
-                      title="确认删除该工具？"
-                      description="已被流程、定时任务或执行历史使用时无法删除，只能停用。"
-                      onConfirm={() => remove.mutate(r.id)}
-                    >
-                      <Button size="small" danger>
-                        删除
-                      </Button>
-                    </Popconfirm>
-                  )}
-                </Space>
+                <RowActions
+                  inline={2}
+                  actions={[
+                    ...(canRun ? [{ key: "run", label: "执行", onClick: () => setExecTool(r) }] : []),
+                    ...(isAdmin
+                      ? [{ key: "edit", label: "编辑", onClick: () => navigate(`/tools/${r.id}/edit`) }]
+                      : []),
+                    ...(isAdmin
+                      ? [
+                          {
+                            key: "copy",
+                            label: "克隆",
+                            loading: copy.isPending,
+                            onClick: () => copy.mutate(r.id),
+                          },
+                          {
+                            key: "delete",
+                            label: "删除",
+                            danger: true,
+                            onClick: () => remove.mutate(r.id),
+                            confirm: {
+                              title: "确认删除该工具？",
+                              description: "已被流程、定时任务或执行历史使用时无法删除，只能停用。",
+                            },
+                          },
+                        ]
+                      : []),
+                  ]}
+                />
               ),
             },
           ]}
         />
+      </div>
+
       </div>
 
       <ExecuteToolModal toolID={execTool?.id ?? null} open={!!execTool} onClose={() => setExecTool(null)} />

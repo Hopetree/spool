@@ -10,7 +10,6 @@ import {
   Select,
   Space,
   Switch,
-  Typography,
 } from "antd";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams } from "react-router-dom";
@@ -25,6 +24,7 @@ import {
   type ToolType,
 } from "../api/tools";
 import CodeEditor from "../components/CodeEditor";
+import PageHeader from "../components/PageHeader";
 import { useAuthStore } from "../stores/auth";
 
 interface ParamForm {
@@ -143,15 +143,16 @@ export default function ToolEditor() {
 
   return (
     <div>
-      <Space style={{ marginBottom: 16 }} wrap>
-        <Button onClick={() => navigate(isNew ? "/tools" : `/tools/${id}`)}>返回</Button>
-        <Typography.Title level={4} style={{ margin: 0 }}>
-          {isNew ? "新建工具" : `编辑工具：${detail?.name ?? ""}`}
-        </Typography.Title>
-        <Button type="primary" loading={save.isPending} onClick={() => form.submit()}>
-          保存为新版本
-        </Button>
-      </Space>
+      <PageHeader
+        back={{ label: "返回", onClick: () => navigate(isNew ? "/tools" : `/tools/${id}`) }}
+        title={isNew ? "新建工具" : `编辑工具：${detail?.name ?? ""}`}
+        crumbs={[{ title: "工具", to: "/tools" }, { title: isNew ? "新建工具" : "编辑工具" }]}
+        extra={
+          <Button type="primary" loading={save.isPending} onClick={() => form.submit()}>
+            保存为新版本
+          </Button>
+        }
+      />
 
       <Form<FormValues>
         form={form}

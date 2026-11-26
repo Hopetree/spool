@@ -8,7 +8,6 @@ import {
   Space,
   Switch,
   Tag,
-  Typography,
 } from "antd";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams } from "react-router-dom";
@@ -17,6 +16,7 @@ import { copyFlow, deleteFlow, getFlow, setFlowEnabled } from "../api/flows";
 import ExecuteFlowModal from "../components/ExecuteFlowModal";
 import ExecutionTable from "../components/ExecutionTable";
 import FlowGraph from "../components/FlowGraph";
+import PageHeader from "../components/PageHeader";
 import { useAuthStore } from "../stores/auth";
 
 export default function FlowDetail() {
@@ -71,37 +71,36 @@ export default function FlowDetail() {
 
   return (
     <div>
-      <Space style={{ marginBottom: 16 }} wrap>
-        <Button onClick={() => navigate("/flows")}>返回列表</Button>
-        <Typography.Title level={4} style={{ margin: 0 }}>
-          {detail?.name ?? "流程"}
-        </Typography.Title>
-        {detail && (
-          <Typography.Text type="secondary">
-            {detail.nodes.length} 个节点 · {detail.edge_count} 条连线
-          </Typography.Text>
-        )}
-        {canRun && <Button onClick={() => setExecOpen(true)}>执行</Button>}
-        {isAdmin && <Button onClick={() => navigate(`/flows/${id}/edit`)}>编辑</Button>}
-        {isAdmin && (
-          <Button loading={clone.isPending} onClick={() => clone.mutate()}>
-            克隆
-          </Button>
-        )}
-        {isAdmin && (
-          <Space size={4}>
-            <span>启用</span>
-            <Switch checked={detail?.enabled} loading={toggle.isPending} onChange={(v) => toggle.mutate(v)} />
-          </Space>
-        )}
-        {isAdmin && (
-          <Popconfirm title="确认删除该流程？" onConfirm={() => remove.mutate()}>
-            <Button danger loading={remove.isPending}>
-              删除流程
-            </Button>
-          </Popconfirm>
-        )}
-      </Space>
+      <PageHeader
+        back={{ label: "返回列表", onClick: () => navigate("/flows") }}
+        title={detail?.name ?? "流程"}
+        subtitle={detail ? `${detail.nodes.length} 个节点 · ${detail.edge_count} 条连线` : undefined}
+        crumbs={[{ title: "流程", to: "/flows" }, { title: "流程详情" }]}
+        extra={
+          <>
+            {canRun && <Button onClick={() => setExecOpen(true)}>执行</Button>}
+            {isAdmin && <Button onClick={() => navigate(`/flows/${id}/edit`)}>编辑</Button>}
+            {isAdmin && (
+              <Button loading={clone.isPending} onClick={() => clone.mutate()}>
+                克隆
+              </Button>
+            )}
+            {isAdmin && (
+              <Space size={4}>
+                <span>启用</span>
+                <Switch checked={detail?.enabled} loading={toggle.isPending} onChange={(v) => toggle.mutate(v)} />
+              </Space>
+            )}
+            {isAdmin && (
+              <Popconfirm title="确认删除该流程？" onConfirm={() => remove.mutate()}>
+                <Button danger loading={remove.isPending}>
+                  删除流程
+                </Button>
+              </Popconfirm>
+            )}
+          </>
+        }
+      />
 
       <Card loading={isLoading} style={{ marginBottom: 16 }}>
         {detail && (

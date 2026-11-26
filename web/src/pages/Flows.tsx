@@ -1,11 +1,13 @@
 import { useState } from "react";
-import { App as AntApp, Button, Input, Popconfirm, Select, Space, Switch, Table } from "antd";
+import { App as AntApp, Button, Card, Input, Select, Space, Switch, Table } from "antd";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "react-router-dom";
 import dayjs from "dayjs";
 import { ApiError } from "../api/client";
 import { copyFlow, deleteFlow, listFlows, setFlowEnabled, type FlowSummary } from "../api/flows";
 import ExecuteFlowModal from "../components/ExecuteFlowModal";
+import PageHeader from "../components/PageHeader";
+import RowActions from "../components/RowActions";
 import { useAuthStore } from "../stores/auth";
 
 export default function Flows() {
@@ -56,25 +58,34 @@ export default function Flows() {
 
   return (
     <div>
-      <Space style={{ marginBottom: 16 }} wrap>
-        <Input.Search allowClear placeholder="名称或描述" style={{ width: 220 }} onSearch={setKeyword} />
-        <Select
-          allowClear
-          placeholder="状态"
-          style={{ width: 110 }}
-          value={enabled}
-          onChange={setEnabled}
-          options={[
-            { value: "true", label: "启用" },
-            { value: "false", label: "停用" },
-          ]}
-        />
-        {isAdmin && (
-          <Button type="primary" onClick={() => navigate("/flows/new")}>
-            新建流程
-          </Button>
-        )}
-      </Space>
+      <PageHeader
+        title="流程列表"
+        subtitle={`共 ${flows.length} 个`}
+        extra={
+          isAdmin && (
+            <Button type="primary" onClick={() => navigate("/flows/new")}>
+              新建流程
+            </Button>
+          )
+        }
+      />
+
+      <Card size="small" style={{ marginBottom: 16 }} styles={{ body: { padding: 12 } }}>
+        <Space wrap>
+          <Input.Search allowClear placeholder="名称或描述" style={{ width: 220 }} onSearch={setKeyword} />
+          <Select
+            allowClear
+            placeholder="状态"
+            style={{ width: 110 }}
+            value={enabled}
+            onChange={setEnabled}
+            options={[
+              { value: "true", label: "启用" },
+              { value: "false", label: "停用" },
+            ]}
+          />
+        </Space>
+      </Card>
 
       <Table<FlowSummary>
         rowKey="id"
@@ -106,31 +117,29 @@ export default function Flows() {
           },
           {
             title: "操作",
+            width: 160,
             render: (_, r) => (
-              <Space>
-                {canRun && (
-                  <Button size="small" onClick={() => setExecFlow(r)}>
-                    执行
-                  </Button>
-                )}
-                {isAdmin && (
-                  <Button size="small" onClick={() => navigate(`/flows/${r.id}/edit`)}>
-                    编辑
-                  </Button>
-                )}
-                {isAdmin && (
-                  <Button size="small" loading={copy.isPending} onClick={() => copy.mutate(r.id)}>
-                    复制
-                  </Button>
-                )}
-                {isAdmin && (
-                  <Popconfirm title="确认删除该流程？" onConfirm={() => remove.mutate(r.id)}>
-                    <Button size="small" danger>
-                      删除
-                    </Button>
-                  </Popconfirm>
-                )}
-              </Space>
+              <RowActions
+                inline={2}
+                actions={[
+                  ...(canRun ? [{ key: "run", label: "执行", onClick: () => setExecFlow(r) }] : []),
+                  ...(isAdmin
+                    ? [{ key: "edit", label: "编辑", onClick: () => navigate(`/flows/${r.id}/edit`) }]
+                    : []),
+                  ...(isAdmin
+                    ? [
+                        { key: "copy", label: "复制", onClick: () => copy.mutate(r.id) },
+                        {
+                          key: "delete",
+                          label: "删除",
+                          danger: true,
+                          onClick: () => remove.mutate(r.id),
+                          confirm: { title: "确认删除该流程？" },
+                        },
+                      ]
+                    : []),
+                ]}
+              />
             ),
           },
         ]}

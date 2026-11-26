@@ -29,6 +29,7 @@ import {
   type TargetKind,
 } from "../api/schedules";
 import { getTool, listTools, type ToolParam } from "../api/tools";
+import PageHeader from "../components/PageHeader";
 import { useAuthStore } from "../stores/auth";
 
 interface FormValues {
@@ -188,15 +189,16 @@ export default function ScheduleEditor() {
 
   return (
     <div>
-      <Space style={{ marginBottom: 16 }} wrap>
-        <Button onClick={() => navigate(isNew ? "/schedules" : `/schedules/${id}`)}>返回</Button>
-        <Typography.Title level={4} style={{ margin: 0 }}>
-          {isNew ? "新建定时任务" : detail?.name ?? "定时任务"}
-        </Typography.Title>
-        <Button type="primary" loading={save.isPending} onClick={() => form.submit()}>
-          保存
-        </Button>
-      </Space>
+      <PageHeader
+        back={{ label: "返回", onClick: () => navigate(isNew ? "/schedules" : `/schedules/${id}`) }}
+        title={isNew ? "新建定时任务" : detail?.name ?? "定时任务"}
+        crumbs={[{ title: "自动化", to: "/schedules" }, { title: isNew ? "新建定时任务" : "编辑定时任务" }]}
+        extra={
+          <Button type="primary" loading={save.isPending} onClick={() => form.submit()}>
+            保存
+          </Button>
+        }
+      />
 
       <Form<FormValues>
         form={form}

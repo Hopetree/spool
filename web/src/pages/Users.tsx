@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { App as AntApp, Button, Form, Input, Modal, Popconfirm, Select, Space, Switch, Table, Tag } from "antd";
+import { App as AntApp, Button, Form, Input, Modal, Select, Switch, Table, Tag } from "antd";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import dayjs from "dayjs";
 import { ApiError } from "../api/client";
@@ -14,6 +14,8 @@ import {
   type Role,
   type UserView,
 } from "../api/users";
+import PageHeader from "../components/PageHeader";
+import RowActions from "../components/RowActions";
 import { useAuthStore } from "../stores/auth";
 
 const roleLabel: Record<Role, string> = { admin: "管理员", operator: "操作员", viewer: "只读" };
@@ -83,11 +85,15 @@ export default function Users() {
 
   return (
     <div>
-      <Space style={{ marginBottom: 16 }}>
-        <Button type="primary" onClick={() => setCreateOpen(true)}>
-          新增用户
-        </Button>
-      </Space>
+      <PageHeader
+        title="用户"
+        subtitle={`共 ${data.length} 个`}
+        extra={
+          <Button type="primary" onClick={() => setCreateOpen(true)}>
+            新增用户
+          </Button>
+        }
+      />
       <Table<UserView>
         rowKey="id"
         size="small"
@@ -118,30 +124,40 @@ export default function Users() {
           },
           {
             title: "操作",
-            width: 270,
+            width: 160,
             render: (_, r) => (
-              <Space size={4} wrap={false}>
-                <Button
-                  size="small"
-                  onClick={() => {
-                    setEditing(r);
-                    editForm.setFieldsValue({ display_name: r.display_name, role: r.role, enabled: r.enabled });
-                  }}
-                >
-                  编辑
-                </Button>
-                <Button size="small" onClick={() => setResetting(r)}>
-                  重置密码
-                </Button>
-                <Popconfirm title="强制该用户所有会话下线？" onConfirm={() => forceLogout.mutate(r.id)}>
-                  <Button size="small">强制下线</Button>
-                </Popconfirm>
-                <Popconfirm title="确认删除该用户？" onConfirm={() => remove.mutate(r.id)}>
-                  <Button size="small" danger disabled={r.id === me?.id}>
-                    删除
-                  </Button>
-                </Popconfirm>
-              </Space>
+              <RowActions
+                inline={2}
+                actions={[
+                  {
+                    key: "edit",
+                    label: "编辑",
+                    onClick: () => {
+                      setEditing(r);
+                      editForm.setFieldsValue({ display_name: r.display_name, role: r.role, enabled: r.enabled });
+                    },
+                  },
+                  {
+                    key: "reset",
+                    label: "重置密码",
+                    onClick: () => setResetting(r),
+                  },
+                  {
+                    key: "kick",
+                    label: "强制下线",
+                    onClick: () => forceLogout.mutate(r.id),
+                    confirm: { title: "强制该用户所有会话下线？" },
+                  },
+                  {
+                    key: "delete",
+                    label: "删除",
+                    danger: true,
+                    disabled: r.id === me?.id,
+                    onClick: () => remove.mutate(r.id),
+                    confirm: { title: "确认删除该用户？" },
+                  },
+                ]}
+              />
             ),
           },
         ]}
