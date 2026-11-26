@@ -131,7 +131,18 @@ export interface RunToolInput {
   host_ids: string[];
 }
 
+export interface RunFlowInput {
+  kind: "flow";
+  ref_id: string;
+  params: Record<string, string>;
+  host_ids: string[];
+}
+
 export function runTool(input: RunToolInput): Promise<Execution> {
+  return request<Execution>("POST", "/executions", input);
+}
+
+export function runFlow(input: RunFlowInput): Promise<Execution> {
   return request<Execution>("POST", "/executions", input);
 }
 

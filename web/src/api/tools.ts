@@ -26,6 +26,7 @@ export interface ToolSummary {
   sudo: boolean;
   content_hash: string;
   param_count: number;
+  params: ToolParam[];
   created_at: number;
   updated_at: number;
 }

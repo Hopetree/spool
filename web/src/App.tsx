@@ -3,6 +3,8 @@ import AppLayout from "./components/AppLayout";
 import ProtectedRoute from "./components/ProtectedRoute";
 import Credentials from "./pages/Credentials";
 import ExecutionDetail from "./pages/ExecutionDetail";
+import FlowEditor from "./pages/FlowEditor";
+import Flows from "./pages/Flows";
 import Executions from "./pages/Executions";
 import Groups from "./pages/Groups";
 import Home from "./pages/Home";
@@ -25,6 +27,9 @@ export default function App() {
           <Route path="tools" element={<Tools />} />
           <Route path="tools/new" element={<ToolEditor />} />
           <Route path="tools/:id" element={<ToolEditor />} />
+          <Route path="flows" element={<Flows />} />
+          <Route path="flows/new" element={<FlowEditor />} />
+          <Route path="flows/:id" element={<FlowEditor />} />
           <Route path="executions" element={<Executions />} />
           <Route path="executions/:id" element={<ExecutionDetail />} />
           <Route path="password" element={<Password />} />

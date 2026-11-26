@@ -38,7 +38,10 @@ export default function Executions() {
           style={{ width: 120 }}
           value={kind}
           onChange={setKind}
-          options={[{ value: "tool", label: "工具" }]}
+          options={[
+            { value: "tool", label: "工具" },
+            { value: "flow", label: "流程" },
+          ]}
         />
         <Select
           allowClear

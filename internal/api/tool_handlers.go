@@ -47,7 +47,7 @@ func writeToolError(c *gin.Context, err error) {
 	case errors.Is(err, tool.ErrNotFound):
 		fail(c, http.StatusNotFound, "not_found", "工具不存在", nil)
 	case errors.Is(err, tool.ErrHasHistory):
-		fail(c, http.StatusConflict, "tool_has_history", "工具已有执行历史，只能停用", nil)
+		fail(c, http.StatusConflict, "tool_has_history", "工具已被流程或执行历史使用，只能停用", nil)
 	default:
 		fail(c, http.StatusInternalServerError, "internal_error", "操作失败，请稍后重试", nil)
 	}
