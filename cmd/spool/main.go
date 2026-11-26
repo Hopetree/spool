@@ -17,7 +17,10 @@ import (
 	"github.com/Hopetree/spool/internal/audit"
 	"github.com/Hopetree/spool/internal/auth"
 	"github.com/Hopetree/spool/internal/config"
+	"github.com/Hopetree/spool/internal/credential"
+	"github.com/Hopetree/spool/internal/host"
 	"github.com/Hopetree/spool/internal/lockfile"
+	"github.com/Hopetree/spool/internal/sshx"
 	"github.com/Hopetree/spool/internal/store"
 	"github.com/Hopetree/spool/internal/web"
 )
@@ -64,6 +67,21 @@ func run() error {
 
 	authSvc := auth.NewService(st.DB, time.Duration(cfg.Security.SessionTTLHours)*time.Hour)
 	auditSvc := audit.NewService(st.DB)
+
+	masterKey, err := credential.LoadOrCreateMasterKey(filepath.Join(cfg.DataDir, "master.key"))
+	if err != nil {
+		return err
+	}
+	cipher, err := credential.NewCipher(masterKey)
+	if err != nil {
+		return err
+	}
+	if err := credential.CheckMasterKey(context.Background(), st.DB, cipher); err != nil {
+		return fmt.Errorf("master key check failed (was data_dir/master.key replaced or lost?): %w", err)
+	}
+	credSvc := credential.NewService(st.DB, cipher)
+	hostSvc := host.NewService(st.DB, credSvc, sshx.NewProber(), cfg.Security.HostKeyPolicy)
+
 	initialPassword, created, err := authSvc.BootstrapAdmin(context.Background())
 	if err != nil {
 		return err
@@ -73,13 +91,15 @@ func run() error {
 	}
 
 	router := api.NewRouter(api.Deps{
-		Cfg:        cfg,
-		Store:      st,
-		Auth:       authSvc,
-		Audit:      auditSvc,
-		Version:    version,
-		StartedAt:  time.Now(),
-		WebHandler: web.Handler(),
+		Cfg:         cfg,
+		Store:       st,
+		Auth:        authSvc,
+		Audit:       auditSvc,
+		Credentials: credSvc,
+		Hosts:       hostSvc,
+		Version:     version,
+		StartedAt:   time.Now(),
+		WebHandler:  web.Handler(),
 	})
 
 	srv := &http.Server{

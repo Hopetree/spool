@@ -1,5 +1,6 @@
-import { HomeOutlined, LockOutlined, LogoutOutlined, UserOutlined } from "@ant-design/icons";
+import { CloudServerOutlined, HomeOutlined, KeyOutlined, LockOutlined, LogoutOutlined, UserOutlined } from "@ant-design/icons";
 import { Avatar, Dropdown, Layout, Menu, Space, Typography } from "antd";
+import type { MenuProps } from "antd";
 import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useAuthStore } from "../stores/auth";
 
@@ -10,6 +11,15 @@ export default function AppLayout() {
   const logout = useAuthStore((s) => s.logout);
   const navigate = useNavigate();
   const location = useLocation();
+
+  const section = `/${location.pathname.split("/")[1] ?? ""}`;
+  const items: MenuProps["items"] = [
+    { key: "/", icon: <HomeOutlined />, label: <Link to="/">首页</Link> },
+    { key: "/hosts", icon: <CloudServerOutlined />, label: <Link to="/hosts">主机</Link> },
+  ];
+  if (user?.role === "admin") {
+    items.push({ key: "/credentials", icon: <KeyOutlined />, label: <Link to="/credentials">凭据</Link> });
+  }
 
   return (
     <Layout style={{ minHeight: "100vh" }}>
@@ -28,12 +38,7 @@ export default function AppLayout() {
         >
           SPOOL
         </div>
-        <Menu
-          theme="dark"
-          mode="inline"
-          selectedKeys={[location.pathname === "/" ? "/" : `/${location.pathname.split("/")[1]}`]}
-          items={[{ key: "/", icon: <HomeOutlined />, label: <Link to="/">首页</Link> }]}
-        />
+        <Menu theme="dark" mode="inline" selectedKeys={[section === "/" ? "/" : section]} items={items} />
       </Sider>
       <Layout>
         <Header
