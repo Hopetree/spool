@@ -121,7 +121,7 @@ export default function Flows() {
                   </Button>
                 )}
                 {isAdmin && (
-                  <Button size="small" onClick={() => navigate(`/flows/${r.id}`)}>
+                  <Button size="small" onClick={() => navigate(`/flows/${r.id}/edit`)}>
                     编辑
                   </Button>
                 )}

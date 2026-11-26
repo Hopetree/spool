@@ -3,7 +3,6 @@ import {
   App as AntApp,
   Button,
   Card,
-  Drawer,
   Form,
   Input,
   InputNumber,
@@ -25,8 +24,7 @@ import {
   type FlowMapping,
 } from "../api/flows";
 import { listTools, type ParamType, type ToolSummary } from "../api/tools";
-import ExecuteFlowModal from "../components/ExecuteFlowModal";
-import ExecutionTable from "../components/ExecutionTable";
+
 import { useAuthStore } from "../stores/auth";
 
 interface ParamForm {
@@ -183,12 +181,9 @@ export default function FlowEditor() {
   const { message } = AntApp.useApp();
   const user = useAuthStore((s) => s.user);
   const isAdmin = user?.role === "admin";
-  const canRun = isAdmin || user?.role === "operator";
 
   const [form] = Form.useForm<FormValues>();
   const [stages, setStages] = useState<StageState[]>([]);
-  const [execOpen, setExecOpen] = useState(false);
-  const [historyOpen, setHistoryOpen] = useState(false);
 
   const { data: detail, isLoading } = useQuery({
     queryKey: ["flow", id],
@@ -210,7 +205,7 @@ export default function FlowEditor() {
         description: detail.description,
         failure_policy: detail.failure_policy,
         max_duration_sec: detail.max_duration_sec,
-        params: detail.params.map((p) => ({ ...p, optionsText: p.options.join(", ") })),
+        params: detail.params.map((p) => ({ ...p, optionsText: (p.options ?? []).join(", ") })),
       });
       setStages(
         detail.stages.map((stage) => ({
@@ -282,7 +277,7 @@ export default function FlowEditor() {
       message.success("已保存");
       void qc.invalidateQueries({ queryKey: ["flows"] });
       void qc.invalidateQueries({ queryKey: ["flow", created.id] });
-      if (isNew) navigate(`/flows/${created.id}`, { replace: true });
+      navigate(`/flows/${created.id}`, { replace: true });
     },
     onError: (err) =>
       message.error(err instanceof ApiError ? err.message : err instanceof Error ? err.message : "保存失败"),
@@ -322,7 +317,7 @@ export default function FlowEditor() {
       <Card>
         <Typography.Title level={4}>流程定义仅管理员可编辑</Typography.Title>
         <Space>
-          <Button onClick={() => navigate("/flows")}>返回列表</Button>
+          <Button onClick={() => navigate(isNew ? "/flows" : `/flows/${id}`)}>返回</Button>
         </Space>
       </Card>
     );
@@ -331,12 +326,10 @@ export default function FlowEditor() {
   return (
     <div>
       <Space style={{ marginBottom: 16 }} wrap>
-        <Button onClick={() => navigate("/flows")}>返回列表</Button>
+        <Button onClick={() => navigate(isNew ? "/flows" : `/flows/${id}`)}>返回</Button>
         <Typography.Title level={4} style={{ margin: 0 }}>
-          {isNew ? "新建流程" : detail?.name ?? "流程"}
+          {isNew ? "新建流程" : `编辑流程：${detail?.name ?? ""}`}
         </Typography.Title>
-        {!isNew && canRun && <Button onClick={() => setExecOpen(true)}>执行</Button>}
-        {!isNew && <Button onClick={() => setHistoryOpen(true)}>执行历史</Button>}
         <Button type="primary" loading={save.isPending} onClick={() => form.submit()}>
           保存流程
         </Button>
@@ -562,16 +555,7 @@ export default function FlowEditor() {
         </Card>
       </Form>
 
-      <Drawer
-        open={historyOpen}
-        onClose={() => setHistoryOpen(false)}
-        title={`${detail?.name ?? "流程"} 执行历史`}
-        width={980}
-      >
-        {id && <ExecutionTable kind="flow" refID={id} />}
-      </Drawer>
 
-      <ExecuteFlowModal flowID={id ?? null} open={execOpen} onClose={() => setExecOpen(false)} />
     </div>
   );
 }

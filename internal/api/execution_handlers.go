@@ -90,6 +90,10 @@ func listExecutionsHandler(d Deps) gin.HandlerFunc {
 			where = append(where, "e.ref_id = ?")
 			args = append(args, v)
 		}
+		if v := c.Query("schedule_id"); v != "" {
+			where = append(where, "e.schedule_id = ?")
+			args = append(args, v)
+		}
 		if v := c.Query("created_by"); v != "" {
 			where = append(where, "e.created_by = ?")
 			args = append(args, v)

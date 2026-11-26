@@ -125,6 +125,11 @@ func ValidateParams(params []Param) error {
 	if len(params) > 50 {
 		return invalid("参数最多 50 个")
 	}
+	for i := range params {
+		if params[i].Options == nil {
+			params[i].Options = []string{}
+		}
+	}
 	seen := map[string]bool{}
 	for _, p := range params {
 		if !envNameRe.MatchString(p.Name) {

@@ -135,7 +135,7 @@ export default function Schedules() {
                   </Button>
                 )}
                 {isAdmin && (
-                  <Button size="small" onClick={() => navigate(`/schedules/${r.id}`)}>
+                  <Button size="small" onClick={() => navigate(`/schedules/${r.id}/edit`)}>
                     编辑
                   </Button>
                 )}

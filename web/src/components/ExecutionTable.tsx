@@ -7,8 +7,9 @@ import { listExecutions, type Execution } from "../api/executions";
 import ExecutionStatusTag from "./ExecutionStatusTag";
 
 interface Props {
-  kind: "tool" | "flow" | "adhoc";
+  kind?: "tool" | "flow" | "adhoc";
   refID?: string;
+  scheduleID?: string;
   showFilters?: boolean;
   pageSize?: number;
 }
@@ -20,17 +21,18 @@ function duration(ex: Execution): string {
   return `${Math.floor(sec / 60)}m ${sec % 60}s`;
 }
 
-export default function ExecutionTable({ kind, refID, showFilters, pageSize = 20 }: Props) {
+export default function ExecutionTable({ kind, refID, scheduleID, showFilters, pageSize = 20 }: Props) {
   const navigate = useNavigate();
   const [status, setStatus] = useState<string>();
   const [keyword, setKeyword] = useState("");
 
   const { data, isLoading } = useQuery({
-    queryKey: ["executions", kind, refID ?? "", status, keyword],
+    queryKey: ["executions", kind ?? "", refID ?? "", scheduleID ?? "", status, keyword],
     queryFn: () =>
       listExecutions({
         kind,
         ref_id: refID,
+        schedule_id: scheduleID,
         status,
         keyword,
         page: 1,

@@ -250,7 +250,7 @@ export default function Tools() {
                     </Button>
                   )}
                   {isAdmin && (
-                    <Button size="small" onClick={() => navigate(`/tools/${r.id}`)}>
+                    <Button size="small" onClick={() => navigate(`/tools/${r.id}/edit`)}>
                       编辑
                     </Button>
                   )}

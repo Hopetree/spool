@@ -64,7 +64,7 @@ function paramInput(p: ToolParam, editing: boolean): ReactNode {
     );
   }
   if (p.type === "select") {
-    return <Select allowClear options={p.options.map((o) => ({ value: o, label: o }))} />;
+    return <Select allowClear options={(p.options ?? []).map((o) => ({ value: o, label: o }))} />;
   }
   if (p.sensitive) {
     return <Input.Password placeholder={editing ? "留空保持不变" : undefined} />;
@@ -169,10 +169,10 @@ export default function ScheduleEditor() {
       };
       return isNew ? createSchedule(input) : updateSchedule(id!, input);
     },
-    onSuccess: () => {
+    onSuccess: (created) => {
       message.success("已保存");
       void qc.invalidateQueries({ queryKey: ["schedules"] });
-      navigate("/schedules");
+      navigate(`/schedules/${created.id}`, { replace: true });
     },
     onError: (err) => message.error(err instanceof ApiError ? err.message : "保存失败"),
   });
@@ -181,7 +181,7 @@ export default function ScheduleEditor() {
     return (
       <Card>
         <Typography.Title level={4}>定时任务仅管理员可编辑</Typography.Title>
-        <Button onClick={() => navigate("/schedules")}>返回列表</Button>
+        <Button onClick={() => navigate(isNew ? "/schedules" : `/schedules/${id}`)}>返回</Button>
       </Card>
     );
   }
@@ -189,7 +189,7 @@ export default function ScheduleEditor() {
   return (
     <div>
       <Space style={{ marginBottom: 16 }} wrap>
-        <Button onClick={() => navigate("/schedules")}>返回列表</Button>
+        <Button onClick={() => navigate(isNew ? "/schedules" : `/schedules/${id}`)}>返回</Button>
         <Typography.Title level={4} style={{ margin: 0 }}>
           {isNew ? "新建定时任务" : detail?.name ?? "定时任务"}
         </Typography.Title>

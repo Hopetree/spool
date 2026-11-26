@@ -8,6 +8,7 @@ import Channels from "./pages/Channels";
 import Credentials from "./pages/Credentials";
 import ExecutionDetail from "./pages/ExecutionDetail";
 import Files from "./pages/Files";
+import FlowDetail from "./pages/FlowDetail";
 import FlowEditor from "./pages/FlowEditor";
 import FlowExecutions from "./pages/FlowExecutions";
 import Flows from "./pages/Flows";
@@ -16,8 +17,10 @@ import Home from "./pages/Home";
 import Hosts from "./pages/Hosts";
 import Login from "./pages/Login";
 import Password from "./pages/Password";
+import ScheduleDetail from "./pages/ScheduleDetail";
 import ScheduleEditor from "./pages/ScheduleEditor";
 import Schedules from "./pages/Schedules";
+import ToolDetail from "./pages/ToolDetail";
 import ToolEditor from "./pages/ToolEditor";
 import ToolExecutions from "./pages/ToolExecutions";
 import Tools from "./pages/Tools";
@@ -36,16 +39,19 @@ export default function App() {
           <Route path="tools" element={<Tools />} />
           <Route path="tools/executions" element={<ToolExecutions />} />
           <Route path="tools/new" element={<ToolEditor />} />
-          <Route path="tools/:id" element={<ToolEditor />} />
+          <Route path="tools/:id/edit" element={<ToolEditor />} />
+          <Route path="tools/:id" element={<ToolDetail />} />
           <Route path="flows" element={<Flows />} />
           <Route path="flows/executions" element={<FlowExecutions />} />
           <Route path="flows/new" element={<FlowEditor />} />
-          <Route path="flows/:id" element={<FlowEditor />} />
+          <Route path="flows/:id/edit" element={<FlowEditor />} />
+          <Route path="flows/:id" element={<FlowDetail />} />
           <Route path="executions" element={<Navigate to="/tools/executions" replace />} />
           <Route path="executions/:id" element={<ExecutionDetail />} />
           <Route path="schedules" element={<Schedules />} />
           <Route path="schedules/new" element={<ScheduleEditor />} />
-          <Route path="schedules/:id" element={<ScheduleEditor />} />
+          <Route path="schedules/:id/edit" element={<ScheduleEditor />} />
+          <Route path="schedules/:id" element={<ScheduleDetail />} />
           <Route path="adhoc" element={<Adhoc />} />
           <Route path="adhoc/history" element={<AdhocHistory />} />
           <Route path="channels" element={<Channels />} />

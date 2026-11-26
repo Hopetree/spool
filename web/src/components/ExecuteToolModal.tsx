@@ -30,7 +30,7 @@ function paramInput(p: ToolParam): ReactNode {
     );
   }
   if (p.type === "select") {
-    return <Select options={p.options.map((o) => ({ value: o, label: o }))} />;
+    return <Select options={(p.options ?? []).map((o) => ({ value: o, label: o }))} />;
   }
   if (p.sensitive) {
     return <Input.Password />;

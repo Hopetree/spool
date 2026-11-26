@@ -102,6 +102,7 @@ export interface ExecutionFilters {
   ref_id?: string;
   host_id?: string;
   tool_id?: string;
+  schedule_id?: string;
   created_by?: string;
   keyword?: string;
   from?: number;
