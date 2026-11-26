@@ -778,6 +778,13 @@ func preflightFailure(st Step, cap capability) (string, string) {
 }
 
 func (e *Engine) uploadStep(ctx context.Context, runner Runner, dir string, st Step, scriptName string, env map[string]string) error {
+	code, err := runner.RunStream(ctx, "mkdir -p "+ShellQuote(dir), nil, nil)
+	if err != nil {
+		return fmt.Errorf("create remote dir: %w", err)
+	}
+	if code != 0 {
+		return fmt.Errorf("create remote dir: exit %d", code)
+	}
 	if err := runner.Upload(ctx, path.Join(dir, scriptName), []byte(st.Content), 0o700); err != nil {
 		return err
 	}

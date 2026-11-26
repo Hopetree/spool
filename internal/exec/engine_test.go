@@ -32,6 +32,7 @@ type fakeRunner struct {
 	runCmds       []string
 	cleanups      int
 	kills         int
+	mkdirs        int
 	responses     []fakeResponse
 	concurrent    int32
 	maxConcurrent int32
@@ -80,6 +81,9 @@ func (f *fakeRunner) run(ctx context.Context, cmd string, onOut, onErr func([]by
 		return r.code, nil
 	}
 	f.mu.Lock()
+	if strings.Contains(cmd, "mkdir -p") {
+		f.mkdirs++
+	}
 	if strings.Contains(cmd, "rm -rf") {
 		f.cleanups++
 	}
@@ -218,6 +222,9 @@ func TestExecutionSuccess(t *testing.T) {
 	}
 	if runner.cleanups == 0 {
 		t.Fatal("remote dir was not cleaned")
+	}
+	if runner.mkdirs == 0 {
+		t.Fatal("remote dir was not created")
 	}
 	sensitive, err := fx.engine.DecryptSensitive(final)
 	if err != nil || sensitive["TOKEN"] != "s3cr3t" {
