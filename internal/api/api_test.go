@@ -17,6 +17,7 @@ import (
 	"github.com/Hopetree/spool/internal/config"
 	"github.com/Hopetree/spool/internal/credential"
 	"github.com/Hopetree/spool/internal/exec"
+	"github.com/Hopetree/spool/internal/flow"
 	"github.com/Hopetree/spool/internal/host"
 	"github.com/Hopetree/spool/internal/sshx"
 	"github.com/Hopetree/spool/internal/store"
@@ -70,6 +71,7 @@ func newTestEnv(t *testing.T) *testEnv {
 		User: "root", OS: "Linux", Fingerprint: "SHA256:new", KeyType: "ssh-ed25519", SFTP: true,
 	}}
 	toolSvc := tool.NewService(st.DB)
+	flowSvc := flow.NewService(st.DB, toolSvc)
 	runner := &stubRunner{out: "hello\n"}
 	engine := exec.New(st.DB, credSvc, &stubFactory{r: runner}, exec.Config{
 		LogsDir:               filepath.Join(cfg.DataDir, "logs"),
@@ -89,6 +91,7 @@ func newTestEnv(t *testing.T) *testEnv {
 			Credentials: credSvc,
 			Hosts:       host.NewService(st.DB, credSvc, prober, "tofu"),
 			Tools:       toolSvc,
+			Flows:       flowSvc,
 			Engine:      engine,
 			Version:     "test",
 		}),

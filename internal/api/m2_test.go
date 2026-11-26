@@ -66,10 +66,10 @@ func (f *stubFactory) Connect(ctx context.Context, h exec.HostRef) (exec.Runner,
 	return f.r, nil
 }
 
-func createTestTool(t *testing.T, e *testEnv, cookie *http.Cookie, params []map[string]any) map[string]any {
+func createNamedTool(t *testing.T, e *testEnv, cookie *http.Cookie, name string, params []map[string]any) map[string]any {
 	t.Helper()
 	w := e.do(t, http.MethodPost, "/api/v1/tools", map[string]any{
-		"name": "demo", "description": "demo tool", "type": "shell",
+		"name": name, "description": "demo tool", "type": "shell",
 		"interpreter": "/bin/bash", "content": "echo hello", "params": params, "timeout_sec": 30,
 	}, cookie)
 	if w.Code != http.StatusCreated {
@@ -80,6 +80,10 @@ func createTestTool(t *testing.T, e *testEnv, cookie *http.Cookie, params []map[
 		t.Fatal(err)
 	}
 	return body
+}
+
+func createTestTool(t *testing.T, e *testEnv, cookie *http.Cookie, params []map[string]any) map[string]any {
+	return createNamedTool(t, e, cookie, "demo", params)
 }
 
 func ensureUser(t *testing.T, e *testEnv, username, role string) *http.Cookie {

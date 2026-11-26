@@ -11,6 +11,7 @@ import (
 	"github.com/Hopetree/spool/internal/config"
 	"github.com/Hopetree/spool/internal/credential"
 	"github.com/Hopetree/spool/internal/exec"
+	"github.com/Hopetree/spool/internal/flow"
 	"github.com/Hopetree/spool/internal/host"
 	"github.com/Hopetree/spool/internal/store"
 	"github.com/Hopetree/spool/internal/tool"
@@ -25,6 +26,7 @@ type Deps struct {
 	Credentials *credential.Service
 	Hosts       *host.Service
 	Tools       *tool.Service
+	Flows       *flow.Service
 	Engine      *exec.Engine
 	Version     string
 	StartedAt   time.Time
@@ -74,6 +76,11 @@ func NewRouter(d Deps) *gin.Engine {
 	admin.POST("/tools/:id/enabled", setToolEnabledHandler(d))
 	admin.POST("/tools/:id/rollback", rollbackToolHandler(d))
 	admin.POST("/tools/:id/copy", copyToolHandler(d))
+	admin.POST("/flows", createFlowHandler(d))
+	admin.PUT("/flows/:id", updateFlowHandler(d))
+	admin.DELETE("/flows/:id", deleteFlowHandler(d))
+	admin.POST("/flows/:id/enabled", setFlowEnabledHandler(d))
+	admin.POST("/flows/:id/copy", copyFlowHandler(d))
 
 	authed.GET("/hosts", listHostsHandler(d))
 	authed.GET("/hosts/:id", getHostHandler(d))
@@ -82,6 +89,8 @@ func NewRouter(d Deps) *gin.Engine {
 	authed.GET("/tools/:id", getToolHandler(d))
 	authed.GET("/tools/:id/versions", toolVersionsHandler(d))
 	authed.GET("/tools/:id/versions/:no", toolVersionHandler(d))
+	authed.GET("/flows", listFlowsHandler(d))
+	authed.GET("/flows/:id", getFlowHandler(d))
 	authed.GET("/executions", listExecutionsHandler(d))
 	authed.GET("/executions/:id", getExecutionHandler(d))
 	authed.GET("/executions/:id/events", executionEventsHandler(d))

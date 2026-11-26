@@ -95,6 +95,12 @@ type fakeRunnerWrapper struct {
 }
 
 func (w *fakeRunnerWrapper) Upload(ctx context.Context, path string, data []byte, mode fs.FileMode) error {
+	w.r.mu.Lock()
+	if w.r.uploads == nil {
+		w.r.uploads = map[string]string{}
+	}
+	w.r.uploads[path] = string(data)
+	w.r.mu.Unlock()
 	return nil
 }
 
@@ -397,6 +403,112 @@ func TestHostConnectFailureSkipsSteps(t *testing.T) {
 	}
 	steps, _ := fx.engine.StepRuns(context.Background(), ex.ID)
 	if len(steps) != 1 || steps[0].Status != "skipped" || steps[0].FailureReason != "skipped" {
+		t.Fatalf("step = %+v", steps[0])
+	}
+}
+
+func TestSensitiveParamsInjectedOnlyWhenReferenced(t *testing.T) {
+	runner := &fakeRunner{}
+	fx := newEngineFixture(t, Config{}, &fakeRunnerWrapper{r: runner})
+	plan := Plan{Kind: "flow", Name: "f", Stages: []Stage{{Index: 1, Steps: []Step{{
+		Index: 1, Name: "step", Type: "shell", Interpreter: "/bin/bash", Content: "echo",
+		TimeoutSec: 5, Params: map[string]string{"PLAIN": "visible"},
+		SensitiveParams: map[string]string{"TOKEN": "flow.secret"},
+	}}}}}
+	ex, err := fx.engine.Submit(context.Background(), SubmitRequest{
+		Kind: "flow", Name: "f", Plan: plan, HostIDs: []string{fx.hostID},
+		Sensitive: map[string]string{"flow.secret": "s3cr3t", "unused": "nope"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if final := waitTerminal(t, fx.engine, ex.ID); final.Status != "success" {
+		t.Fatalf("status = %q", final.Status)
+	}
+	runner.mu.Lock()
+	defer runner.mu.Unlock()
+	var env string
+	for path, content := range runner.uploads {
+		if strings.HasSuffix(path, ".spool-env") {
+			env = content
+		}
+	}
+	if !strings.Contains(env, "export TOKEN='s3cr3t'") || !strings.Contains(env, "export PLAIN='visible'") {
+		t.Fatalf("env = %s", env)
+	}
+	if strings.Contains(env, "nope") {
+		t.Fatalf("unreferenced sensitive value injected: %s", env)
+	}
+}
+
+func flowPlan(policy string, alwaysRunSecond bool, maxDuration int) Plan {
+	return Plan{Kind: "flow", Name: "f", FailurePolicy: policy, MaxDurationSec: maxDuration, Stages: []Stage{
+		{Index: 1, Steps: []Step{{Index: 1, Name: "first", Type: "shell", Interpreter: "/bin/bash", Content: "a", TimeoutSec: 5}}},
+		{Index: 2, AlwaysRun: alwaysRunSecond, Steps: []Step{{Index: 1, Name: "second", Type: "shell", Interpreter: "/bin/bash", Content: "b", TimeoutSec: 5}}},
+	}}
+}
+
+func TestFlowAbortRunsAlwaysRunStage(t *testing.T) {
+	runner := &fakeRunner{responses: []fakeResponse{{code: 1}, {code: 0, stdout: "cleanup\n"}}}
+	fx := newEngineFixture(t, Config{}, &fakeRunnerWrapper{r: runner})
+	ex, _ := fx.engine.Submit(context.Background(), SubmitRequest{
+		Kind: "flow", Name: "f", Plan: flowPlan("abort", true, 600), HostIDs: []string{fx.hostID},
+	})
+	final := waitTerminal(t, fx.engine, ex.ID)
+	if final.Status != "failed" {
+		t.Fatalf("status = %q", final.Status)
+	}
+	steps, _ := fx.engine.StepRuns(context.Background(), ex.ID)
+	if len(steps) != 2 || steps[0].Status != "failed" || steps[1].Status != "success" {
+		t.Fatalf("steps = %+v", steps)
+	}
+	if len(runner.responses) != 0 {
+		t.Fatalf("always_run stage did not execute")
+	}
+}
+
+func TestFlowAbortSkipsNextStage(t *testing.T) {
+	runner := &fakeRunner{responses: []fakeResponse{{code: 1}}}
+	fx := newEngineFixture(t, Config{}, &fakeRunnerWrapper{r: runner})
+	ex, _ := fx.engine.Submit(context.Background(), SubmitRequest{
+		Kind: "flow", Name: "f", Plan: flowPlan("abort", false, 600), HostIDs: []string{fx.hostID},
+	})
+	waitTerminal(t, fx.engine, ex.ID)
+	steps, _ := fx.engine.StepRuns(context.Background(), ex.ID)
+	if len(steps) != 2 || steps[1].Status != "skipped" {
+		t.Fatalf("steps = %+v", steps)
+	}
+}
+
+func TestFlowContinueRunsNextStage(t *testing.T) {
+	runner := &fakeRunner{responses: []fakeResponse{{code: 1}, {code: 0}}}
+	fx := newEngineFixture(t, Config{}, &fakeRunnerWrapper{r: runner})
+	ex, _ := fx.engine.Submit(context.Background(), SubmitRequest{
+		Kind: "flow", Name: "f", Plan: flowPlan("continue", false, 600), HostIDs: []string{fx.hostID},
+	})
+	waitTerminal(t, fx.engine, ex.ID)
+	steps, _ := fx.engine.StepRuns(context.Background(), ex.ID)
+	if len(steps) != 2 || steps[1].Status != "success" {
+		t.Fatalf("steps = %+v", steps)
+	}
+}
+
+func TestFlowMaxDuration(t *testing.T) {
+	runner := &fakeRunner{responses: []fakeResponse{{block: true}}}
+	fx := newEngineFixture(t, Config{}, &fakeRunnerWrapper{r: runner})
+	ex, _ := fx.engine.Submit(context.Background(), SubmitRequest{
+		Kind: "flow", Name: "f", Plan: flowPlan("continue", true, 1), HostIDs: []string{fx.hostID},
+	})
+	final := waitTerminal(t, fx.engine, ex.ID)
+	if final.Status != "failed" {
+		t.Fatalf("status = %q", final.Status)
+	}
+	hosts, _ := fx.engine.HostRuns(context.Background(), ex.ID)
+	if len(hosts) != 1 || hosts[0].FailureReason != "flow_timeout" {
+		t.Fatalf("host = %+v", hosts[0])
+	}
+	steps, _ := fx.engine.StepRuns(context.Background(), ex.ID)
+	if steps[0].FailureReason != "timeout" {
 		t.Fatalf("step = %+v", steps[0])
 	}
 }

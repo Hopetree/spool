@@ -155,42 +155,70 @@ func createExecutionHandler(d Deps) gin.HandlerFunc {
 			fail(c, http.StatusBadRequest, "validation_failed", "请求格式不正确", nil)
 			return
 		}
-		if in.Kind != "tool" {
-			fail(c, http.StatusBadRequest, "unsupported_kind", "当前仅支持执行工具", nil)
-			return
-		}
 		if in.RefID == "" || len(in.HostIDs) == 0 {
-			fail(c, http.StatusBadRequest, "validation_failed", "必须选择工具和主机", nil)
+			fail(c, http.StatusBadRequest, "validation_failed", "必须选择执行对象和主机", nil)
 			return
 		}
-		detail, err := d.Tools.Get(c.Request.Context(), in.RefID)
-		if err != nil {
-			writeToolError(c, err)
-			return
-		}
-		if !detail.Enabled {
-			fail(c, http.StatusConflict, "tool_disabled", "工具已停用，不能执行", nil)
-			return
-		}
-		values, err := tool.ValidateValues(detail.Version.Params, in.Params)
-		if err != nil {
-			var ve *tool.ValidationError
-			if errors.As(err, &ve) {
-				fail(c, http.StatusBadRequest, "validation_failed", ve.Message, nil)
+		ctx := c.Request.Context()
+		var (
+			name      string
+			refID     string
+			plan      exec.Plan
+			plain     map[string]string
+			sensitive map[string]string
+		)
+		switch in.Kind {
+		case "tool":
+			detail, err := d.Tools.Get(ctx, in.RefID)
+			if err != nil {
+				writeToolError(c, err)
 				return
 			}
-			fail(c, http.StatusBadRequest, "validation_failed", "参数不正确", nil)
+			if !detail.Enabled {
+				fail(c, http.StatusConflict, "tool_disabled", "工具已停用，不能执行", nil)
+				return
+			}
+			values, err := tool.ValidateValues(detail.Version.Params, in.Params)
+			if err != nil {
+				msg := "参数不正确"
+				var ve *tool.ValidationError
+				if errors.As(err, &ve) {
+					msg = ve.Message
+				}
+				fail(c, http.StatusBadRequest, "validation_failed", msg, nil)
+				return
+			}
+			plain, sensitive = splitSensitive(detail.Version.Params, values)
+			sensitiveRefs := make(map[string]string, len(sensitive))
+			for k := range sensitive {
+				sensitiveRefs[k] = k
+			}
+			plan = exec.BuildToolPlan(detail.Name, toolSnapshot(detail), plain, sensitiveRefs)
+			name, refID = detail.Name, detail.ID
+		case "flow":
+			detail, err := d.Flows.Get(ctx, in.RefID)
+			if err != nil {
+				writeFlowError(c, err)
+				return
+			}
+			if !detail.Enabled {
+				fail(c, http.StatusConflict, "flow_disabled", "流程已停用，不能执行", nil)
+				return
+			}
+			res, err := d.Flows.Compile(ctx, in.RefID, in.Params)
+			if err != nil {
+				writeFlowError(c, err)
+				return
+			}
+			plan, plain, sensitive = res.Plan, res.Plain, res.Sensitive
+			name, refID = detail.Name, detail.ID
+		default:
+			fail(c, http.StatusBadRequest, "unsupported_kind", "仅支持执行工具或流程", nil)
 			return
 		}
-		plain, sensitive := splitSensitive(detail.Version.Params, values)
-		sensitiveRefs := make(map[string]string, len(sensitive))
-		for k := range sensitive {
-			sensitiveRefs[k] = k
-		}
-		plan := exec.BuildToolPlan(detail.Name, toolSnapshot(detail), plain, sensitiveRefs)
 		u := currentUser(c)
-		ex, err := d.Engine.Submit(c.Request.Context(), exec.SubmitRequest{
-			Kind: "tool", Source: "manual", RefID: detail.ID, Name: detail.Name,
+		ex, err := d.Engine.Submit(ctx, exec.SubmitRequest{
+			Kind: in.Kind, Source: "manual", RefID: refID, Name: name,
 			Plan: plan, Params: plain, Sensitive: sensitive, HostIDs: in.HostIDs, ActorID: u.ID,
 		})
 		if err != nil {
@@ -204,7 +232,7 @@ func createExecutionHandler(d Deps) gin.HandlerFunc {
 		writeAudit(c, d, audit.Entry{
 			ActorID: u.ID, ActorName: u.Username, Action: "execution.start",
 			ResourceType: "execution", ResourceID: ex.ID, ResourceName: ex.NameSnapshot,
-			Summary: map[string]any{"kind": "tool", "ref_id": detail.ID, "hosts": ex.HostTotal},
+			Summary: map[string]any{"kind": in.Kind, "ref_id": refID, "hosts": ex.HostTotal},
 		})
 		c.JSON(http.StatusCreated, ex)
 	}
@@ -259,38 +287,74 @@ func rerunExecutionHandler(d Deps) gin.HandlerFunc {
 			fail(c, http.StatusNotFound, "not_found", "执行记录不存在", nil)
 			return
 		}
-		if old.Kind != "tool" {
-			fail(c, http.StatusBadRequest, "unsupported_kind", "当前仅支持重跑工具执行", nil)
-			return
-		}
-		detail, err := d.Tools.Get(ctx, old.RefID)
-		if err != nil {
-			writeToolError(c, err)
-			return
-		}
-		if !detail.Enabled {
-			fail(c, http.StatusConflict, "tool_disabled", "工具已停用，不能执行", nil)
-			return
-		}
-		values := map[string]string{}
-		_ = json.Unmarshal([]byte(old.ParamsJSON), &values)
+		stored := map[string]string{}
+		_ = json.Unmarshal([]byte(old.ParamsJSON), &stored)
 		sensitiveOld, err := d.Engine.DecryptSensitive(old)
 		if err != nil {
 			fail(c, http.StatusInternalServerError, "master_key_mismatch", "无法解密原执行参数", nil)
 			return
 		}
-		for k, v := range sensitiveOld {
-			values[k] = v
-		}
-		values, err = tool.ValidateValues(detail.Version.Params, values)
-		if err != nil {
-			fail(c, http.StatusBadRequest, "validation_failed", "原参数已不适用于当前工具版本", nil)
+		var (
+			name      string
+			plan      exec.Plan
+			plain     map[string]string
+			sensitive map[string]string
+		)
+		switch old.Kind {
+		case "tool":
+			detail, err := d.Tools.Get(ctx, old.RefID)
+			if err != nil {
+				writeToolError(c, err)
+				return
+			}
+			if !detail.Enabled {
+				fail(c, http.StatusConflict, "tool_disabled", "工具已停用，不能执行", nil)
+				return
+			}
+			for k, v := range sensitiveOld {
+				stored[k] = v
+			}
+			values, err := tool.ValidateValues(detail.Version.Params, stored)
+			if err != nil {
+				fail(c, http.StatusBadRequest, "validation_failed", "原参数已不适用于当前工具版本", nil)
+				return
+			}
+			plain, sensitive = splitSensitive(detail.Version.Params, values)
+			sensitiveRefs := make(map[string]string, len(sensitive))
+			for k := range sensitive {
+				sensitiveRefs[k] = k
+			}
+			plan = exec.BuildToolPlan(detail.Name, toolSnapshot(detail), plain, sensitiveRefs)
+			name = detail.Name
+		case "flow":
+			detail, err := d.Flows.Get(ctx, old.RefID)
+			if err != nil {
+				writeFlowError(c, err)
+				return
+			}
+			if !detail.Enabled {
+				fail(c, http.StatusConflict, "flow_disabled", "流程已停用，不能执行", nil)
+				return
+			}
+			allowed := map[string]bool{}
+			for _, p := range detail.Params {
+				allowed[p.Name] = true
+			}
+			for k, v := range sensitiveOld {
+				if allowed[k] {
+					stored[k] = v
+				}
+			}
+			res, err := d.Flows.Compile(ctx, detail.ID, stored)
+			if err != nil {
+				writeFlowError(c, err)
+				return
+			}
+			plan, plain, sensitive = res.Plan, res.Plain, res.Sensitive
+			name = detail.Name
+		default:
+			fail(c, http.StatusBadRequest, "unsupported_kind", "当前执行类型不支持重跑", nil)
 			return
-		}
-		plain, sensitive := splitSensitive(detail.Version.Params, values)
-		sensitiveRefs := make(map[string]string, len(sensitive))
-		for k := range sensitive {
-			sensitiveRefs[k] = k
 		}
 		hosts, _ := d.Engine.HostRuns(ctx, old.ID)
 		hostIDs := make([]string, 0, len(hosts))
@@ -301,9 +365,8 @@ func rerunExecutionHandler(d Deps) gin.HandlerFunc {
 		}
 		u := currentUser(c)
 		ex, err := d.Engine.Submit(ctx, exec.SubmitRequest{
-			Kind: "tool", Source: "manual", RefID: detail.ID, Name: detail.Name,
-			Plan:   exec.BuildToolPlan(detail.Name, toolSnapshot(detail), plain, sensitiveRefs),
-			Params: plain, Sensitive: sensitive, HostIDs: hostIDs, ActorID: u.ID,
+			Kind: old.Kind, Source: "manual", RefID: old.RefID, Name: name,
+			Plan: plan, Params: plain, Sensitive: sensitive, HostIDs: hostIDs, ActorID: u.ID,
 		})
 		if err != nil {
 			fail(c, http.StatusInternalServerError, "internal_error", "提交执行失败", nil)
@@ -312,7 +375,7 @@ func rerunExecutionHandler(d Deps) gin.HandlerFunc {
 		writeAudit(c, d, audit.Entry{
 			ActorID: u.ID, ActorName: u.Username, Action: "execution.rerun",
 			ResourceType: "execution", ResourceID: ex.ID, ResourceName: ex.NameSnapshot,
-			Summary: map[string]any{"source_execution": old.ID, "hosts": len(hostIDs)},
+			Summary: map[string]any{"source_execution": old.ID, "kind": old.Kind, "hosts": len(hostIDs)},
 		})
 		c.JSON(http.StatusCreated, ex)
 	}
