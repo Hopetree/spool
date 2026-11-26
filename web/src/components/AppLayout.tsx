@@ -1,4 +1,6 @@
 import {
+  BellOutlined,
+  ClockCircleOutlined,
   CloudServerOutlined,
   DeploymentUnitOutlined,
   HistoryOutlined,
@@ -29,9 +31,11 @@ export default function AppLayout() {
     { key: "/tools", icon: <ToolOutlined />, label: <Link to="/tools">工具</Link> },
     { key: "/flows", icon: <DeploymentUnitOutlined />, label: <Link to="/flows">流程</Link> },
     { key: "/executions", icon: <HistoryOutlined />, label: <Link to="/executions">执行历史</Link> },
+    { key: "/schedules", icon: <ClockCircleOutlined />, label: <Link to="/schedules">定时任务</Link> },
   ];
   if (user?.role === "admin") {
     items.push({ key: "/credentials", icon: <KeyOutlined />, label: <Link to="/credentials">凭据</Link> });
+    items.push({ key: "/channels", icon: <BellOutlined />, label: <Link to="/channels">通知渠道</Link> });
   }
 
   return (

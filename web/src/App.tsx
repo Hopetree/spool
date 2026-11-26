@@ -1,6 +1,7 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 import AppLayout from "./components/AppLayout";
 import ProtectedRoute from "./components/ProtectedRoute";
+import Channels from "./pages/Channels";
 import Credentials from "./pages/Credentials";
 import ExecutionDetail from "./pages/ExecutionDetail";
 import FlowEditor from "./pages/FlowEditor";
@@ -11,6 +12,8 @@ import Home from "./pages/Home";
 import Hosts from "./pages/Hosts";
 import Login from "./pages/Login";
 import Password from "./pages/Password";
+import ScheduleEditor from "./pages/ScheduleEditor";
+import Schedules from "./pages/Schedules";
 import ToolEditor from "./pages/ToolEditor";
 import Tools from "./pages/Tools";
 
@@ -32,6 +35,10 @@ export default function App() {
           <Route path="flows/:id" element={<FlowEditor />} />
           <Route path="executions" element={<Executions />} />
           <Route path="executions/:id" element={<ExecutionDetail />} />
+          <Route path="schedules" element={<Schedules />} />
+          <Route path="schedules/new" element={<ScheduleEditor />} />
+          <Route path="schedules/:id" element={<ScheduleEditor />} />
+          <Route path="channels" element={<Channels />} />
           <Route path="password" element={<Password />} />
         </Route>
       </Route>
