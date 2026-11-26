@@ -16,13 +16,27 @@ import (
 	"github.com/Hopetree/spool/internal/auth"
 	"github.com/Hopetree/spool/internal/config"
 	"github.com/Hopetree/spool/internal/credential"
+	"github.com/Hopetree/spool/internal/host"
+	"github.com/Hopetree/spool/internal/sshx"
 	"github.com/Hopetree/spool/internal/store"
 )
+
+type stubProber struct {
+	res  sshx.ProbeResult
+	err  error
+	last sshx.Target
+}
+
+func (s *stubProber) Probe(ctx context.Context, t sshx.Target) (sshx.ProbeResult, error) {
+	s.last = t
+	return s.res, s.err
+}
 
 type testEnv struct {
 	router   *gin.Engine
 	store    *store.Store
 	auth     *auth.Service
+	prober   *stubProber
 	password string
 }
 
@@ -46,17 +60,23 @@ func newTestEnv(t *testing.T) *testEnv {
 	if err != nil {
 		t.Fatalf("cipher: %v", err)
 	}
+	credSvc := credential.NewService(st.DB, cipher)
+	prober := &stubProber{res: sshx.ProbeResult{
+		User: "root", OS: "Linux", Fingerprint: "SHA256:new", KeyType: "ssh-ed25519", SFTP: true,
+	}}
 	env := &testEnv{
 		router: NewRouter(Deps{
 			Cfg:         &cfg,
 			Store:       st,
 			Auth:        authSvc,
 			Audit:       audit.NewService(st.DB),
-			Credentials: credential.NewService(st.DB, cipher),
+			Credentials: credSvc,
+			Hosts:       host.NewService(st.DB, credSvc, prober, "tofu"),
 			Version:     "test",
 		}),
 		store:    st,
 		auth:     authSvc,
+		prober:   prober,
 		password: pw,
 	}
 	return env

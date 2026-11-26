@@ -18,7 +18,9 @@ import (
 	"github.com/Hopetree/spool/internal/auth"
 	"github.com/Hopetree/spool/internal/config"
 	"github.com/Hopetree/spool/internal/credential"
+	"github.com/Hopetree/spool/internal/host"
 	"github.com/Hopetree/spool/internal/lockfile"
+	"github.com/Hopetree/spool/internal/sshx"
 	"github.com/Hopetree/spool/internal/store"
 	"github.com/Hopetree/spool/internal/web"
 )
@@ -78,6 +80,7 @@ func run() error {
 		return fmt.Errorf("master key check failed (was data_dir/master.key replaced or lost?): %w", err)
 	}
 	credSvc := credential.NewService(st.DB, cipher)
+	hostSvc := host.NewService(st.DB, credSvc, sshx.NewProber(), cfg.Security.HostKeyPolicy)
 
 	initialPassword, created, err := authSvc.BootstrapAdmin(context.Background())
 	if err != nil {
@@ -93,6 +96,7 @@ func run() error {
 		Auth:        authSvc,
 		Audit:       auditSvc,
 		Credentials: credSvc,
+		Hosts:       hostSvc,
 		Version:     version,
 		StartedAt:   time.Now(),
 		WebHandler:  web.Handler(),
