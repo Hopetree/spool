@@ -1,0 +1,16 @@
+server:
+  listen: ":8080"
+  base_url: "http://spool.intra"
+  cookie_secure: false
+  tls:
+    cert: ""
+    key: ""
+data_dir: /var/lib/spool
+timezone: Asia/Shanghai
+logging:
+  level: info
+security:
+  session_ttl_hours: 12
+  login_max_failures: 5
+  login_lockout_minutes: 5
+  host_key_policy: tofu

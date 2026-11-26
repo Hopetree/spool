@@ -1,0 +1,19 @@
+[Unit]
+Description=Spool intranet ops platform
+After=network-online.target
+
+[Service]
+Type=simple
+User=spool
+Group=spool
+ExecStart=/opt/spool/spool -config /etc/spool/config.yaml
+Restart=on-failure
+RestartSec=3
+LimitNOFILE=65535
+KillMode=mixed
+TimeoutStopSec=40
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
