@@ -22,7 +22,22 @@ func (e *ValidationError) Error() string { return e.Message }
 
 func invalid(msg string) error { return &ValidationError{Message: msg} }
 
-var envNameRe = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+// Node types and edge conditions.
+const (
+	NodeStart = "start"
+	NodeTool  = "tool"
+
+	CondAlways            = "always"
+	CondSuccess           = "success"
+	CondFailure           = "failure"
+	CondOutputContains    = "output_contains"
+	CondOutputNotContains = "output_not_contains"
+)
+
+var (
+	nodeIDRe  = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
+	envNameRe = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+)
 
 // Mapping maps one tool parameter to a flow parameter or a literal value.
 type Mapping struct {
@@ -30,10 +45,10 @@ type Mapping struct {
 	Value  string `json:"value"`
 }
 
-// Step is one tool invocation inside a stage.
-type Step struct {
+// Node is a start marker or a tool invocation in the flow graph.
+type Node struct {
 	ID            string             `json:"id"`
-	Index         int                `json:"index"`
+	Type          string             `json:"type"` // start | tool
 	Name          string             `json:"name"`
 	ToolID        string             `json:"tool_id"`
 	ToolName      string             `json:"tool_name"`
@@ -42,16 +57,17 @@ type Step struct {
 	TimeoutSec    int                `json:"timeout_sec"`
 	RetryCount    int                `json:"retry_count"`
 	RetryDelaySec int                `json:"retry_delay_sec"`
-	Enabled       bool               `json:"enabled"`
+	X             float64            `json:"x"`
+	Y             float64            `json:"y"`
 }
 
-// Stage groups steps that run in parallel.
-type Stage struct {
+// Edge connects two nodes with an activation condition.
+type Edge struct {
 	ID        string `json:"id"`
-	Index     int    `json:"index"`
-	Name      string `json:"name"`
-	AlwaysRun bool   `json:"always_run"`
-	Steps     []Step `json:"steps"`
+	From      string `json:"from"`
+	To        string `json:"to"`
+	Condition string `json:"condition"`
+	Value     string `json:"value"`
 }
 
 // Flow is the summary view.
@@ -60,37 +76,41 @@ type Flow struct {
 	Name           string       `json:"name"`
 	Description    string       `json:"description"`
 	Params         []tool.Param `json:"params"`
-	FailurePolicy  string       `json:"failure_policy"`
 	MaxDurationSec int          `json:"max_duration_sec"`
 	Enabled        bool         `json:"enabled"`
-	StageCount     int          `json:"stage_count"`
-	StepCount      int          `json:"step_count"`
+	NodeCount      int          `json:"node_count"`
+	EdgeCount      int          `json:"edge_count"`
 	CreatedAt      int64        `json:"created_at"`
 	UpdatedAt      int64        `json:"updated_at"`
 }
 
-// Detail is a flow with its stages and steps.
+// Detail is a flow with its graph.
 type Detail struct {
 	Flow
-	Stages []Stage `json:"stages"`
+	Nodes []Node `json:"nodes"`
+	Edges []Edge `json:"edges"`
 }
 
-// StageInput carries create/update stage fields.
-type StageInput struct {
-	Name      string
-	AlwaysRun bool
-	Steps     []StepInput
-}
-
-// StepInput carries create/update step fields.
-type StepInput struct {
+// NodeInput carries create/update node fields.
+type NodeInput struct {
+	ID            string
+	Type          string
 	Name          string
 	ToolID        string
 	Mapping       map[string]Mapping
 	TimeoutSec    int
 	RetryCount    int
 	RetryDelaySec int
-	Enabled       bool
+	X             float64
+	Y             float64
+}
+
+// EdgeInput carries create/update edge fields.
+type EdgeInput struct {
+	From      string
+	To        string
+	Condition string
+	Value     string
 }
 
 // Input carries create/update fields.
@@ -98,9 +118,9 @@ type Input struct {
 	Name           string
 	Description    string
 	Params         []tool.Param
-	FailurePolicy  string
 	MaxDurationSec int
-	Stages         []StageInput
+	Nodes          []NodeInput
+	Edges          []EdgeInput
 }
 
 // ListFilter narrows flow list queries.
@@ -109,6 +129,14 @@ type ListFilter struct {
 	Enabled  *bool
 	Page     int
 	PageSize int
+}
+
+func validCondition(cond string) bool {
+	switch cond {
+	case CondAlways, CondSuccess, CondFailure, CondOutputContains, CondOutputNotContains:
+		return true
+	}
+	return false
 }
 
 func validateInput(in *Input) error {
@@ -128,83 +156,162 @@ func validateInput(in *Input) error {
 	if err := tool.ValidateParams(in.Params); err != nil {
 		return invalid(err.Error())
 	}
-	if in.FailurePolicy == "" {
-		in.FailurePolicy = "abort"
-	}
-	if in.FailurePolicy != "abort" && in.FailurePolicy != "continue" {
-		return invalid("失败策略必须是 abort 或 continue")
-	}
 	if in.MaxDurationSec == 0 {
 		in.MaxDurationSec = 3600
 	}
 	if in.MaxDurationSec < 1 || in.MaxDurationSec > 86400 {
 		return invalid("流程最大时长必须在 1-86400 秒之间")
 	}
-	if len(in.Stages) == 0 {
-		return invalid("流程至少需要一个阶段")
+	if len(in.Nodes) == 0 {
+		return invalid("流程至少需要一个节点")
 	}
-	if len(in.Stages) > 20 {
-		return invalid("阶段最多 20 个")
+	if len(in.Nodes) > 50 {
+		return invalid("节点最多 50 个")
 	}
-	totalSteps := 0
-	for si := range in.Stages {
-		stage := &in.Stages[si]
-		stage.Name = strings.TrimSpace(stage.Name)
-		if stage.Name == "" {
-			stage.Name = fmt.Sprintf("阶段 %d", si+1)
+	if len(in.Edges) > 100 {
+		return invalid("连线最多 100 条")
+	}
+
+	ids := map[string]NodeInput{}
+	startCount := 0
+	toolCount := 0
+	for i := range in.Nodes {
+		n := &in.Nodes[i]
+		n.ID = strings.TrimSpace(n.ID)
+		if !nodeIDRe.MatchString(n.ID) {
+			return invalid("节点 ID 必须是 1-64 位字母、数字、下划线或短横线")
 		}
-		if len(stage.Name) > 64 {
-			return invalid("阶段名称不能超过 64 个字符")
+		if _, exists := ids[n.ID]; exists {
+			return invalid(fmt.Sprintf("节点 ID %q 重复", n.ID))
 		}
-		if len(stage.Steps) == 0 {
-			return invalid(fmt.Sprintf("阶段 %q 至少需要一个步骤", stage.Name))
-		}
-		if len(stage.Steps) > 20 {
-			return invalid(fmt.Sprintf("阶段 %q 的步骤最多 20 个", stage.Name))
-		}
-		totalSteps += len(stage.Steps)
-		for i := range stage.Steps {
-			step := &stage.Steps[i]
-			step.Name = strings.TrimSpace(step.Name)
-			if step.Name == "" {
-				return invalid(fmt.Sprintf("阶段 %q 的第 %d 个步骤缺少名称", stage.Name, i+1))
+		ids[n.ID] = *n
+		switch n.Type {
+		case NodeStart:
+			startCount++
+			if n.ID != NodeStart {
+				return invalid("开始节点的 ID 必须是 start")
 			}
-			if len(step.Name) > 64 {
-				return invalid("步骤名称不能超过 64 个字符")
+			if n.ToolID != "" {
+				return invalid("开始节点不能绑定工具")
 			}
-			if step.ToolID == "" {
-				return invalid(fmt.Sprintf("步骤 %q 未选择工具", step.Name))
+		case NodeTool:
+			toolCount++
+			n.Name = strings.TrimSpace(n.Name)
+			if n.Name == "" {
+				return invalid("工具节点必须有名称")
 			}
-			if step.TimeoutSec < 0 || step.TimeoutSec > 86400 {
-				return invalid(fmt.Sprintf("步骤 %q 的超时取值范围为 0-86400 秒", step.Name))
+			if len(n.Name) > 64 {
+				return invalid("节点名称不能超过 64 个字符")
 			}
-			if step.RetryCount < 0 || step.RetryCount > 3 {
-				return invalid(fmt.Sprintf("步骤 %q 的重试次数为 0-3", step.Name))
+			if n.ToolID == "" {
+				return invalid(fmt.Sprintf("节点 %q 未选择工具", n.Name))
 			}
-			if step.RetryDelaySec < 0 || step.RetryDelaySec > 300 {
-				return invalid(fmt.Sprintf("步骤 %q 的重试间隔为 0-300 秒", step.Name))
+			if n.TimeoutSec < 0 || n.TimeoutSec > 86400 {
+				return invalid(fmt.Sprintf("节点 %q 的超时取值范围为 0-86400 秒", n.Name))
 			}
-			if step.Mapping == nil {
-				step.Mapping = map[string]Mapping{}
+			if n.RetryCount < 0 || n.RetryCount > 3 {
+				return invalid(fmt.Sprintf("节点 %q 的重试次数为 0-3", n.Name))
 			}
-			for key, m := range step.Mapping {
+			if n.RetryDelaySec < 0 || n.RetryDelaySec > 300 {
+				return invalid(fmt.Sprintf("节点 %q 的重试间隔为 0-300 秒", n.Name))
+			}
+			if n.Mapping == nil {
+				n.Mapping = map[string]Mapping{}
+			}
+			for key, m := range n.Mapping {
 				switch m.Source {
 				case "flow":
 					if !envNameRe.MatchString(m.Value) {
-						return invalid(fmt.Sprintf("步骤 %q 的参数 %q 引用了非法的流程参数", step.Name, key))
+						return invalid(fmt.Sprintf("节点 %q 的参数 %q 引用了非法的流程参数", n.Name, key))
 					}
 				case "literal":
 					if m.Value == "" {
-						return invalid(fmt.Sprintf("步骤 %q 的参数 %q 固定值不能为空", step.Name, key))
+						return invalid(fmt.Sprintf("节点 %q 的参数 %q 固定值不能为空", n.Name, key))
 					}
 				default:
-					return invalid(fmt.Sprintf("步骤 %q 的参数 %q 映射来源必须是 flow 或 literal", step.Name, key))
+					return invalid(fmt.Sprintf("节点 %q 的参数 %q 映射来源必须是 flow 或 literal", n.Name, key))
 				}
+			}
+		default:
+			return invalid("节点类型必须是 start 或 tool")
+		}
+	}
+	if startCount != 1 {
+		return invalid("流程必须有且只有一个开始节点")
+	}
+	if toolCount == 0 {
+		return invalid("流程至少需要一个工具节点")
+	}
+
+	outgoing := map[string][]EdgeInput{}
+	seenPairs := map[string]bool{}
+	for _, e := range in.Edges {
+		if _, ok := ids[e.From]; !ok {
+			return invalid(fmt.Sprintf("连线的起点 %q 不存在", e.From))
+		}
+		if _, ok := ids[e.To]; !ok {
+			return invalid(fmt.Sprintf("连线的终点 %q 不存在", e.To))
+		}
+		if e.From == e.To {
+			return invalid("连线不能指向自己")
+		}
+		if !validCondition(e.Condition) {
+			return invalid("连线条件必须是 always/success/failure/output_contains/output_not_contains")
+		}
+		if (e.Condition == CondOutputContains || e.Condition == CondOutputNotContains) && e.Value == "" {
+			return invalid("输出条件必须填写匹配文本")
+		}
+		key := e.From + "\x00" + e.To
+		if seenPairs[key] {
+			return invalid(fmt.Sprintf("节点 %q 与 %q 之间存在重复连线", e.From, e.To))
+		}
+		seenPairs[key] = true
+		outgoing[e.From] = append(outgoing[e.From], e)
+	}
+	if len(outgoing[NodeStart]) == 0 {
+		return invalid("开始节点至少要有一条出边")
+	}
+
+	// Reachability from start.
+	visited := map[string]bool{NodeStart: true}
+	queue := []string{NodeStart}
+	for len(queue) > 0 {
+		cur := queue[0]
+		queue = queue[1:]
+		for _, e := range outgoing[cur] {
+			if !visited[e.To] {
+				visited[e.To] = true
+				queue = append(queue, e.To)
 			}
 		}
 	}
-	if totalSteps > 50 {
-		return invalid("流程步骤最多 50 个")
+	for id, n := range ids {
+		if !visited[id] {
+			return invalid(fmt.Sprintf("节点 %q 无法从开始节点到达", n.Name))
+		}
+	}
+
+	// Cycle detection (DFS colors).
+	state := map[string]int{} // 0 unvisited, 1 visiting, 2 done
+	var dfs func(string) error
+	dfs = func(id string) error {
+		switch state[id] {
+		case 1:
+			return invalid("流程图中存在环，请调整连线")
+		case 2:
+			return nil
+		}
+		state[id] = 1
+		for _, e := range outgoing[id] {
+			if err := dfs(e.To); err != nil {
+				return err
+			}
+		}
+		state[id] = 2
+		return nil
+	}
+	if err := dfs(NodeStart); err != nil {
+		return err
 	}
 	return nil
 }

@@ -69,6 +69,7 @@ type HostRun struct {
 type StepRun struct {
 	ID            string `db:"id" json:"id"`
 	HostRunID     string `db:"host_run_id" json:"host_run_id"`
+	NodeID        string `db:"node_id" json:"node_id"`
 	StageIdx      int    `db:"stage_idx" json:"stage_idx"`
 	StepIdx       int    `db:"step_idx" json:"step_idx"`
 	Name          string `db:"name_snapshot" json:"name"`
@@ -407,16 +408,35 @@ func (e *Engine) Submit(ctx context.Context, req SubmitRequest) (*Execution, err
 		if err != nil {
 			return nil, fmt.Errorf("insert host run: %w", err)
 		}
-		for _, stage := range req.Plan.Stages {
-			for _, st := range stage.Steps {
+		if req.Plan.Graph != nil {
+			order := 0
+			for _, node := range req.Plan.Graph.Nodes {
+				if node.Type != "tool" {
+					continue
+				}
+				order++
 				_, err = tx.ExecContext(ctx, `INSERT INTO step_runs
-					(id, host_run_id, stage_idx, step_idx, name_snapshot, tool_id, tool_version_id, tool_version_no,
+					(id, host_run_id, node_id, stage_idx, step_idx, name_snapshot, tool_id, tool_version_id, tool_version_no,
 					 content_hash, interpreter, sudo, status)
-					VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued')`,
-					store.NewULID(), hostRunID, stage.Index, st.Index, st.Name, st.ToolID, st.ToolVersionID, st.ToolVersionNo,
-					st.ContentHash, st.Interpreter, st.Sudo)
+					VALUES (?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, 'queued')`,
+					store.NewULID(), hostRunID, node.ID, order, node.Name, node.ToolID, node.ToolVersionID,
+					node.ToolVersionNo, node.ContentHash, node.Interpreter, node.Sudo)
 				if err != nil {
 					return nil, fmt.Errorf("insert step run: %w", err)
+				}
+			}
+		} else {
+			for _, stage := range req.Plan.Stages {
+				for _, st := range stage.Steps {
+					_, err = tx.ExecContext(ctx, `INSERT INTO step_runs
+						(id, host_run_id, node_id, stage_idx, step_idx, name_snapshot, tool_id, tool_version_id, tool_version_no,
+						 content_hash, interpreter, sudo, status)
+						VALUES (?, ?, '', ?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued')`,
+						store.NewULID(), hostRunID, stage.Index, st.Index, st.Name, st.ToolID, st.ToolVersionID,
+						st.ToolVersionNo, st.ContentHash, st.Interpreter, st.Sudo)
+					if err != nil {
+						return nil, fmt.Errorf("insert step run: %w", err)
+					}
 				}
 			}
 		}
@@ -649,6 +669,11 @@ func (e *Engine) runHost(ctx context.Context, log *EventLog, ex Execution, hr Ho
 	}
 	log.Emit(Event{Type: "state", Entity: "host_run", Status: "running", HostRunID: hr.ID})
 
+	if plan.Graph != nil {
+		e.runHostGraph(hostCtx, log, ex, hr, plan, steps, sensitive, target.cap, runner)
+		return
+	}
+
 	failedEarlier := false
 	statuses := make([]string, 0, len(steps))
 	var flowTimedOut bool
@@ -760,7 +785,10 @@ type logSink struct {
 	dropped   int64
 	truncated bool
 	events    int
+	tail      []byte
 }
+
+const logTailLimit = 64 * 1024
 
 func (s *logSink) write(stream string, data []byte) {
 	s.mu.Lock()
@@ -777,7 +805,20 @@ func (s *logSink) write(stream string, data []byte) {
 	}
 	s.written += int64(len(data))
 	s.events++
+	if remain := logTailLimit - len(s.tail); remain > 0 {
+		if len(data) <= remain {
+			s.tail = append(s.tail, data...)
+		} else {
+			s.tail = append(s.tail, data[:remain]...)
+		}
+	}
 	s.log.Emit(Event{Type: "log", HostRunID: s.hostRunID, StepRunID: s.stepRunID, Stream: stream, Data: string(data)})
+}
+
+func (s *logSink) tailText() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return string(s.tail)
 }
 
 func (s *logSink) stats() (int, int64, bool, int64) {
@@ -849,7 +890,7 @@ func (e *Engine) killRemote(runner Runner, dir string, sudo bool) {
 	_, _ = runner.RunStream(ctx, KillCommand(pid, sudo, true), nil, nil)
 }
 
-func (e *Engine) runStep(ctx context.Context, log *EventLog, ex Execution, hr HostRun, sr *StepRun, st Step, sensitive map[string]string, cap capability, runner Runner) {
+func (e *Engine) runStep(ctx context.Context, log *EventLog, ex Execution, hr HostRun, sr *StepRun, st Step, sensitive map[string]string, cap capability, runner Runner) (output string) {
 	select {
 	case e.stepSem <- struct{}{}:
 	case <-ctx.Done():
@@ -900,6 +941,7 @@ func (e *Engine) runStep(ctx context.Context, log *EventLog, ex Execution, hr Ho
 	env["PYTHONUNBUFFERED"] = "1"
 
 	sink := &logSink{log: log, hostRunID: hr.ID, stepRunID: sr.ID, limit: e.cfg.OutputLimitBytes}
+	defer func() { output = sink.tailText() }()
 	cmd := BuildCommand(dir, st, cap.Setsid, cap.Timeout)
 
 	for attempt := 1; attempt <= st.RetryCount+1; attempt++ {
@@ -989,7 +1031,149 @@ func (e *Engine) runStep(ctx context.Context, log *EventLog, ex Execution, hr Ho
 		e.finishStep(log, sr, "failed", reason, exit, msg, ev, written, truncated, dropped)
 		return
 	}
+	return
 }
 
 func (s *logSink) writeOut(data []byte) { s.write("stdout", data) }
 func (s *logSink) writeErr(data []byte) { s.write("stderr", data) }
+
+type graphNodeResult struct {
+	ID      string
+	Status  string
+	Output  string
+	Reason  string
+	Message string
+}
+
+func graphNodeStep(n GraphNode) Step {
+	return Step{
+		Index: 1, Name: n.Name, ToolID: n.ToolID, ToolVersionID: n.ToolVersionID,
+		ToolVersionNo: n.ToolVersionNo, ContentHash: n.ContentHash, Type: n.ToolType,
+		Interpreter: n.Interpreter, Content: n.Content, PrepareCommand: n.PrepareCommand,
+		Sudo: n.Sudo, TimeoutSec: n.TimeoutSec, RetryCount: n.RetryCount,
+		RetryDelaySec: n.RetryDelaySec, Params: n.Params, SensitiveParams: n.SensitiveParams,
+	}
+}
+
+func edgeMatches(edge GraphEdge, res graphNodeResult) bool {
+	switch edge.Condition {
+	case "always":
+		return true
+	case "success":
+		return res.Status == "success"
+	case "failure":
+		return res.Status == "failed"
+	case "output_contains":
+		return strings.Contains(res.Output, edge.Value)
+	case "output_not_contains":
+		return !strings.Contains(res.Output, edge.Value)
+	}
+	return false
+}
+
+func (e *Engine) runHostGraph(ctx context.Context, log *EventLog, ex Execution, hr HostRun, plan Plan,
+	steps []*StepRun, sensitive map[string]string, cap capability, runner Runner) {
+	graph := plan.Graph
+	nodes := make(map[string]GraphNode, len(graph.Nodes))
+	for _, n := range graph.Nodes {
+		nodes[n.ID] = n
+	}
+	stepByNode := make(map[string]*StepRun, len(steps))
+	for _, sr := range steps {
+		if sr.NodeID != "" {
+			stepByNode[sr.NodeID] = sr
+		}
+	}
+	outgoing := make(map[string][]GraphEdge, len(nodes))
+	for _, edge := range graph.Edges {
+		outgoing[edge.From] = append(outgoing[edge.From], edge)
+	}
+
+	started := map[string]bool{"start": true}
+	launched := map[string]bool{}
+	ready := []string{}
+	doneCh := make(chan graphNodeResult, len(graph.Nodes)+1)
+	running := 0
+	unhandled := false
+	failureReason, failureMsg := "", ""
+
+	startResult := graphNodeResult{ID: "start", Status: "success"}
+	for _, edge := range outgoing["start"] {
+		if !started[edge.To] {
+			started[edge.To] = true
+			ready = append(ready, edge.To)
+		}
+	}
+
+	for {
+		for len(ready) > 0 && ctx.Err() == nil {
+			id := ready[0]
+			ready = ready[1:]
+			node, ok := nodes[id]
+			if !ok || node.Type == "start" {
+				continue
+			}
+			sr := stepByNode[id]
+			if sr == nil {
+				continue
+			}
+			launched[id] = true
+			running++
+			go func(n GraphNode, sr *StepRun) {
+				output := e.runStep(ctx, log, ex, hr, sr, graphNodeStep(n), sensitive, cap, runner)
+				doneCh <- graphNodeResult{ID: n.ID, Status: sr.Status, Output: output, Reason: sr.FailureReason, Message: sr.ErrorMessage}
+			}(node, sr)
+		}
+		if running == 0 {
+			break
+		}
+		res := <-doneCh
+		running--
+		matched := false
+		handledFailure := false
+		for _, edge := range outgoing[res.ID] {
+			if ctx.Err() != nil {
+				break
+			}
+			if !edgeMatches(edge, res) {
+				continue
+			}
+			matched = true
+			if res.Status == "failed" && edge.Condition != "always" {
+				handledFailure = true
+			}
+			if !started[edge.To] {
+				started[edge.To] = true
+				ready = append(ready, edge.To)
+			}
+		}
+		if res.Status == "failed" && !handledFailure {
+			unhandled = true
+			if failureReason == "" {
+				failureReason = res.Reason
+				failureMsg = res.Message
+			}
+		}
+		_ = matched
+	}
+
+	for id, sr := range stepByNode {
+		if !launched[id] {
+			e.finishStep(log, sr, "skipped", "skipped", nil, "分支未触发或执行已取消", 0, 0, false, 0)
+		}
+	}
+
+	status := "success"
+	if ctx.Err() != nil {
+		status = e.cancelStatus()
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			status = "failed"
+			failureReason = "flow_timeout"
+			failureMsg = "流程执行超时"
+		}
+	} else if unhandled {
+		status = "failed"
+	}
+	e.finishHost(log, hr.ID, status, failureReason, failureMsg)
+	_ = startResult
+}

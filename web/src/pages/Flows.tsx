@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { App as AntApp, Button, Input, Popconfirm, Select, Space, Switch, Table, Tag } from "antd";
+import { App as AntApp, Button, Input, Popconfirm, Select, Space, Switch, Table } from "antd";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "react-router-dom";
 import dayjs from "dayjs";
@@ -7,8 +7,6 @@ import { ApiError } from "../api/client";
 import { copyFlow, deleteFlow, listFlows, setFlowEnabled, type FlowSummary } from "../api/flows";
 import ExecuteFlowModal from "../components/ExecuteFlowModal";
 import { useAuthStore } from "../stores/auth";
-
-const policyLabel: Record<string, string> = { abort: "失败即中止", continue: "失败后继续" };
 
 export default function Flows() {
   const qc = useQueryClient();
@@ -80,18 +78,13 @@ export default function Flows() {
 
       <Table<FlowSummary>
         rowKey="id"
+        size="small"
         loading={isLoading}
         dataSource={flows}
         columns={[
           { title: "名称", render: (_, r) => <Link to={`/flows/${r.id}`}>{r.name}</Link> },
-          { title: "阶段", dataIndex: "stage_count", width: 80 },
-          { title: "步骤", dataIndex: "step_count", width: 80 },
-          {
-            title: "失败策略",
-            dataIndex: "failure_policy",
-            width: 130,
-            render: (v: string) => <Tag>{policyLabel[v] ?? v}</Tag>,
-          },
+          { title: "节点", dataIndex: "node_count", width: 80 },
+          { title: "连线", dataIndex: "edge_count", width: 80 },
           {
             title: "状态",
             dataIndex: "enabled",

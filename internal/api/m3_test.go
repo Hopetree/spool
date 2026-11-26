@@ -14,18 +14,22 @@ func flowBody(name, toolA, toolB string) map[string]any {
 			{"name": "ENV", "type": "string", "default": "prod"},
 			{"name": "SECRET", "type": "string", "sensitive": true},
 		},
-		"failure_policy": "abort", "max_duration_sec": 600,
-		"stages": []map[string]any{
-			{"name": "执行", "steps": []map[string]any{{
-				"name": "step1", "tool_id": toolA, "timeout_sec": 10,
+		"max_duration_sec": 600,
+		"nodes": []map[string]any{
+			{"id": "start", "type": "start", "name": "开始", "x": 0, "y": 0},
+			{
+				"id": "step1", "type": "tool", "name": "step1", "tool_id": toolA,
+				"timeout_sec": 10, "x": 260, "y": 0,
 				"mapping": map[string]any{
 					"ENV":   map[string]string{"source": "flow", "value": "ENV"},
 					"TOKEN": map[string]string{"source": "flow", "value": "SECRET"},
 				},
-			}}},
-			{"name": "清理", "always_run": true, "steps": []map[string]any{
-				{"name": "cleanup", "tool_id": toolB},
-			}},
+			},
+			{"id": "cleanup", "type": "tool", "name": "cleanup", "tool_id": toolB, "x": 520, "y": 0},
+		},
+		"edges": []map[string]string{
+			{"from": "start", "to": "step1", "condition": "always"},
+			{"from": "step1", "to": "cleanup", "condition": "always"},
 		},
 	}
 }
@@ -65,7 +69,7 @@ func TestFlowCRUDApi(t *testing.T) {
 	var created map[string]any
 	_ = json.Unmarshal(w.Body.Bytes(), &created)
 	id := created["id"].(string)
-	if created["stage_count"] != float64(2) || created["step_count"] != float64(2) {
+	if created["node_count"] != float64(2) || created["edge_count"] != float64(2) {
 		t.Fatalf("created = %+v", created)
 	}
 

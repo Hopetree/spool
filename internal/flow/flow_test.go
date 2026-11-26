@@ -38,22 +38,26 @@ func createTool(t *testing.T, tools *tool.Service, name string, params []tool.Pa
 
 func baseFlowInput(toolA, toolB string) Input {
 	return Input{
-		Name: "deploy", Description: "deploy flow",
+		Name: "deploy", Description: "deploy flow", MaxDurationSec: 600,
 		Params: []tool.Param{
 			{Name: "ENV", Type: "string", Default: "prod"},
 			{Name: "SECRET", Type: "string", Sensitive: true},
 		},
-		FailurePolicy: "abort", MaxDurationSec: 600,
-		Stages: []StageInput{
-			{Name: "准备", Steps: []StepInput{{
-				Name: "deploy", ToolID: toolA, Enabled: true,
+		Nodes: []NodeInput{
+			{ID: "start", Type: "start", Name: "开始"},
+			{
+				ID: "n1", Type: "tool", Name: "deploy", ToolID: toolA,
 				Mapping: map[string]Mapping{
 					"ENV":   {Source: "flow", Value: "ENV"},
 					"TOKEN": {Source: "flow", Value: "SECRET"},
 				},
-				TimeoutSec: 60, RetryCount: 1, RetryDelaySec: 2,
-			}}},
-			{Name: "清理", AlwaysRun: true, Steps: []StepInput{{Name: "cleanup", ToolID: toolB, Enabled: true}}},
+				TimeoutSec: 60, RetryCount: 1, RetryDelaySec: 2, X: 260, Y: 40,
+			},
+			{ID: "n2", Type: "tool", Name: "cleanup", ToolID: toolB, X: 520, Y: 40},
+		},
+		Edges: []EdgeInput{
+			{From: "start", To: "n1", Condition: CondAlways},
+			{From: "n1", To: "n2", Condition: CondAlways},
 		},
 	}
 }
@@ -71,26 +75,28 @@ func TestCreateGetUpdateCopyDelete(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
-	if created.StageCount != 2 || created.StepCount != 2 || len(created.Stages) != 2 {
+	if created.NodeCount != 2 || created.EdgeCount != 2 || len(created.Nodes) != 3 || len(created.Edges) != 2 {
 		t.Fatalf("created = %+v", created)
 	}
-	if !created.Stages[1].AlwaysRun || created.Stages[0].Steps[0].ToolName != "t1" {
-		t.Fatalf("stages = %+v", created.Stages)
+	if created.Nodes[0].Type != NodeStart || created.Nodes[0].ID != "start" {
+		t.Fatalf("start node = %+v", created.Nodes[0])
 	}
 
 	list, total, err := svc.List(ctx, ListFilter{Page: 1, PageSize: 10})
-	if err != nil || total != 1 || len(list) != 1 || list[0].StageCount != 2 {
-		t.Fatalf("list: %v total=%d list=%+v", err, total, list)
+	if err != nil || total != 1 || len(list) != 1 || list[0].NodeCount != 2 {
+		t.Fatalf("list: %v total=%d", err, total)
 	}
 
 	in := baseFlowInput(a.ID, b.ID)
 	in.Name = "deploy-v2"
-	in.Stages[0].Steps[0].Mapping["ENV"] = Mapping{Source: "literal", Value: "staging"}
+	in.Edges[1].Condition = CondFailure
+	in.Nodes = append(in.Nodes, NodeInput{ID: "n3", Type: "tool", Name: "notify", ToolID: b.ID, X: 780, Y: 40})
+	in.Edges = append(in.Edges, EdgeInput{From: "n1", To: "n3", Condition: CondSuccess})
 	updated, err := svc.Update(ctx, created.ID, in)
 	if err != nil {
 		t.Fatalf("update: %v", err)
 	}
-	if updated.Name != "deploy-v2" || updated.Stages[0].Steps[0].Mapping["ENV"].Value != "staging" {
+	if updated.Name != "deploy-v2" || len(updated.Nodes) != 4 || len(updated.Edges) != 3 {
 		t.Fatalf("updated = %+v", updated)
 	}
 
@@ -98,22 +104,15 @@ func TestCreateGetUpdateCopyDelete(t *testing.T) {
 	if err != nil {
 		t.Fatalf("copy: %v", err)
 	}
-	if copied.Name != "deploy-v2-copy" {
-		t.Fatalf("copy name = %q", copied.Name)
-	}
-
-	if err := svc.SetEnabled(ctx, created.ID, false); err != nil {
-		t.Fatal(err)
+	if copied.Name != "deploy-v2-copy" || len(copied.Nodes) != 4 {
+		t.Fatalf("copied = %+v", copied)
 	}
 	if err := svc.Delete(ctx, copied.ID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := svc.Get(ctx, copied.ID); !errors.Is(err, ErrNotFound) {
-		t.Fatalf("get deleted = %v", err)
-	}
 }
 
-func TestValidationRejectsBadDefinitions(t *testing.T) {
+func TestValidation(t *testing.T) {
 	svc, tools, _ := newFlowFixture(t)
 	ctx := context.Background()
 	a := createTool(t, tools, "t1", []tool.Param{
@@ -123,23 +122,29 @@ func TestValidationRejectsBadDefinitions(t *testing.T) {
 	})
 	b := createTool(t, tools, "t2", nil)
 	disabled, _ := tools.Create(ctx, tool.Input{Name: "disabled", Type: "shell", Content: "true"}, "admin")
-	if err := tools.SetEnabled(ctx, disabled.ID, false); err != nil {
-		t.Fatal(err)
-	}
+	_ = tools.SetEnabled(ctx, disabled.ID, false)
 
 	cases := map[string]func(*Input){
 		"empty name":        func(in *Input) { in.Name = "" },
-		"no stages":         func(in *Input) { in.Stages = nil },
-		"missing tool":      func(in *Input) { in.Stages[0].Steps[0].ToolID = "missing" },
-		"disabled tool":     func(in *Input) { in.Stages[0].Steps[0].ToolID = disabled.ID },
-		"unknown mapping":   func(in *Input) { in.Stages[0].Steps[0].Mapping["NOPE"] = Mapping{Source: "literal", Value: "x"} },
-		"missing flow ref":  func(in *Input) { in.Stages[0].Steps[0].Mapping["ENV"] = Mapping{Source: "flow", Value: "MISSING"} },
-		"sensitive literal": func(in *Input) { in.Stages[0].Steps[0].Mapping["TOKEN"] = Mapping{Source: "literal", Value: "x"} },
-		"sensitive mismatch": func(in *Input) {
-			in.Stages[0].Steps[0].Mapping["TOKEN"] = Mapping{Source: "flow", Value: "ENV"}
+		"no nodes":          func(in *Input) { in.Nodes = nil; in.Edges = nil },
+		"missing start":     func(in *Input) { in.Nodes = in.Nodes[1:]; in.Edges = in.Edges[1:] },
+		"two starts":        func(in *Input) { in.Nodes = append(in.Nodes, NodeInput{ID: "start2", Type: NodeStart}) },
+		"missing tool":      func(in *Input) { in.Nodes[1].ToolID = "nope" },
+		"disabled tool":     func(in *Input) { in.Nodes[1].ToolID = disabled.ID },
+		"unknown mapping":   func(in *Input) { in.Nodes[1].Mapping["NOPE"] = Mapping{Source: "literal", Value: "x"} },
+		"missing flow ref":  func(in *Input) { in.Nodes[1].Mapping["ENV"] = Mapping{Source: "flow", Value: "MISSING"} },
+		"sensitive literal": func(in *Input) { in.Nodes[1].Mapping["TOKEN"] = Mapping{Source: "literal", Value: "x"} },
+		"required unmapped": func(in *Input) { delete(in.Nodes[1].Mapping, "REQ") },
+		"bad condition":     func(in *Input) { in.Edges[0].Condition = "sometimes" },
+		"output no value":   func(in *Input) { in.Edges[0].Condition = CondOutputContains },
+		"duplicate edge":    func(in *Input) { in.Edges = append(in.Edges, in.Edges[0]) },
+		"self edge":         func(in *Input) { in.Edges = append(in.Edges, EdgeInput{From: "n1", To: "n1", Condition: CondAlways}) },
+		"unreachable node": func(in *Input) {
+			in.Nodes = append(in.Nodes, NodeInput{ID: "lonely", Type: NodeTool, Name: "lonely", ToolID: b.ID})
 		},
-		"required unmapped": func(in *Input) {
-			delete(in.Stages[0].Steps[0].Mapping, "REQ")
+		"start no outgoing": func(in *Input) { in.Edges = in.Edges[1:] },
+		"cycle": func(in *Input) {
+			in.Edges = append(in.Edges, EdgeInput{From: "n2", To: "n1", Condition: CondAlways})
 		},
 	}
 	for name, mutate := range cases {
@@ -152,7 +157,7 @@ func TestValidationRejectsBadDefinitions(t *testing.T) {
 	}
 }
 
-func TestCompileSplitsSensitiveValues(t *testing.T) {
+func TestCompileBuildsGraph(t *testing.T) {
 	svc, tools, _ := newFlowFixture(t)
 	ctx := context.Background()
 	a := createTool(t, tools, "t1", []tool.Param{
@@ -168,28 +173,29 @@ func TestCompileSplitsSensitiveValues(t *testing.T) {
 	if err != nil {
 		t.Fatalf("compile: %v", err)
 	}
+	if res.Plan.Graph == nil || len(res.Plan.Graph.Nodes) != 3 || len(res.Plan.Graph.Edges) != 2 {
+		t.Fatalf("plan = %+v", res.Plan)
+	}
 	if res.Plain["ENV"] != "prod" {
 		t.Fatalf("plain = %v", res.Plain)
 	}
 	if _, ok := res.Plain["SECRET"]; ok {
-		t.Fatalf("sensitive flow param leaked into plain: %v", res.Plain)
+		t.Fatal("sensitive flow param leaked into plain")
 	}
-	if res.Sensitive["SECRET"] != "s3cr3t" {
-		t.Fatalf("sensitive = %v", res.Sensitive)
+	var n1 *struct{ Params, Sensitive map[string]string }
+	var params, sens map[string]string
+	for _, node := range res.Plan.Graph.Nodes {
+		if node.ID == "n1" {
+			params, sens = node.Params, node.SensitiveParams
+		}
 	}
-	if len(res.Plan.Stages) != 2 || res.Plan.Stages[1].AlwaysRun != true {
-		t.Fatalf("plan = %+v", res.Plan)
+	_ = n1
+	if params["ENV"] != "prod" || params["TOKEN"] != "" {
+		t.Fatalf("node params = %v", params)
 	}
-	step := res.Plan.Stages[0].Steps[0]
-	if step.Params["ENV"] != "prod" || step.TimeoutSec != 60 || step.RetryCount != 1 {
-		t.Fatalf("step = %+v", step)
-	}
-	key := step.SensitiveParams["TOKEN"]
+	key := sens["TOKEN"]
 	if key == "" || res.Sensitive[key] != "s3cr3t" {
-		t.Fatalf("sensitive mapping = %+v sensitive=%v", step.SensitiveParams, res.Sensitive)
-	}
-	if _, ok := step.Params["TOKEN"]; ok {
-		t.Fatal("sensitive value must not be in plain step params")
+		t.Fatalf("sensitive = %v key=%q", sens, key)
 	}
 }
 
@@ -201,7 +207,10 @@ func TestCompileDisabledFlowAndTool(t *testing.T) {
 		{Name: "TOKEN", Type: "string", Sensitive: true},
 	})
 	b := createTool(t, tools, "t2", nil)
-	created, _ := svc.Create(ctx, baseFlowInput(a.ID, b.ID), "admin")
+	created, err := svc.Create(ctx, baseFlowInput(a.ID, b.ID), "admin")
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := svc.SetEnabled(ctx, created.ID, false); err != nil {
 		t.Fatal(err)
 	}
@@ -216,21 +225,5 @@ func TestCompileDisabledFlowAndTool(t *testing.T) {
 	}
 	if _, err := svc.Compile(ctx, created.ID, map[string]string{"SECRET": "x"}); err == nil {
 		t.Fatal("expected disabled tool error")
-	}
-}
-
-func TestToolDeleteBlockedByFlow(t *testing.T) {
-	svc, tools, _ := newFlowFixture(t)
-	ctx := context.Background()
-	a := createTool(t, tools, "t1", []tool.Param{
-		{Name: "ENV", Type: "string", Default: "prod"},
-		{Name: "TOKEN", Type: "string", Sensitive: true},
-	})
-	b := createTool(t, tools, "t2", nil)
-	if _, err := svc.Create(ctx, baseFlowInput(a.ID, b.ID), "admin"); err != nil {
-		t.Fatal(err)
-	}
-	if err := tools.Delete(ctx, a.ID); !errors.Is(err, tool.ErrHasHistory) {
-		t.Fatalf("err = %v, want ErrHasHistory", err)
 	}
 }

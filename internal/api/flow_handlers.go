@@ -12,50 +12,48 @@ import (
 	"github.com/Hopetree/spool/internal/tool"
 )
 
-type flowStepInput struct {
+type flowNodeInput struct {
+	ID            string                  `json:"id"`
+	Type          string                  `json:"type"`
 	Name          string                  `json:"name"`
 	ToolID        string                  `json:"tool_id"`
 	Mapping       map[string]flow.Mapping `json:"mapping"`
 	TimeoutSec    int                     `json:"timeout_sec"`
 	RetryCount    int                     `json:"retry_count"`
 	RetryDelaySec int                     `json:"retry_delay_sec"`
-	Enabled       *bool                   `json:"enabled"`
+	X             float64                 `json:"x"`
+	Y             float64                 `json:"y"`
 }
 
-type flowStageInput struct {
-	Name      string          `json:"name"`
-	AlwaysRun bool            `json:"always_run"`
-	Steps     []flowStepInput `json:"steps"`
+type flowEdgeInput struct {
+	From      string `json:"from"`
+	To        string `json:"to"`
+	Condition string `json:"condition"`
+	Value     string `json:"value"`
 }
 
 type flowInput struct {
-	Name           string           `json:"name"`
-	Description    string           `json:"description"`
-	Params         []tool.Param     `json:"params"`
-	FailurePolicy  string           `json:"failure_policy"`
-	MaxDurationSec int              `json:"max_duration_sec"`
-	Stages         []flowStageInput `json:"stages"`
+	Name           string          `json:"name"`
+	Description    string          `json:"description"`
+	Params         []tool.Param    `json:"params"`
+	MaxDurationSec int             `json:"max_duration_sec"`
+	Nodes          []flowNodeInput `json:"nodes"`
+	Edges          []flowEdgeInput `json:"edges"`
 }
 
 func (in flowInput) toServiceInput() flow.Input {
 	out := flow.Input{
-		Name: in.Name, Description: in.Description, Params: in.Params,
-		FailurePolicy: in.FailurePolicy, MaxDurationSec: in.MaxDurationSec,
+		Name: in.Name, Description: in.Description, Params: in.Params, MaxDurationSec: in.MaxDurationSec,
 	}
-	for _, stage := range in.Stages {
-		si := flow.StageInput{Name: stage.Name, AlwaysRun: stage.AlwaysRun}
-		for _, step := range stage.Steps {
-			enabled := true
-			if step.Enabled != nil {
-				enabled = *step.Enabled
-			}
-			si.Steps = append(si.Steps, flow.StepInput{
-				Name: step.Name, ToolID: step.ToolID, Mapping: step.Mapping,
-				TimeoutSec: step.TimeoutSec, RetryCount: step.RetryCount,
-				RetryDelaySec: step.RetryDelaySec, Enabled: enabled,
-			})
-		}
-		out.Stages = append(out.Stages, si)
+	for _, n := range in.Nodes {
+		out.Nodes = append(out.Nodes, flow.NodeInput{
+			ID: n.ID, Type: n.Type, Name: n.Name, ToolID: n.ToolID, Mapping: n.Mapping,
+			TimeoutSec: n.TimeoutSec, RetryCount: n.RetryCount, RetryDelaySec: n.RetryDelaySec,
+			X: n.X, Y: n.Y,
+		})
+	}
+	for _, e := range in.Edges {
+		out.Edges = append(out.Edges, flow.EdgeInput{From: e.From, To: e.To, Condition: e.Condition, Value: e.Value})
 	}
 	return out
 }
@@ -126,7 +124,7 @@ func createFlowHandler(d Deps) gin.HandlerFunc {
 		writeAudit(c, d, audit.Entry{
 			ActorID: u.ID, ActorName: u.Username, Action: "flow.create",
 			ResourceType: "flow", ResourceID: created.ID, ResourceName: created.Name,
-			Summary: map[string]any{"stages": created.StageCount, "steps": created.StepCount},
+			Summary: map[string]any{"nodes": created.NodeCount, "edges": created.EdgeCount},
 		})
 		c.JSON(http.StatusCreated, created)
 	}
@@ -148,7 +146,7 @@ func updateFlowHandler(d Deps) gin.HandlerFunc {
 		writeAudit(c, d, audit.Entry{
 			ActorID: u.ID, ActorName: u.Username, Action: "flow.update",
 			ResourceType: "flow", ResourceID: updated.ID, ResourceName: updated.Name,
-			Summary: map[string]any{"stages": updated.StageCount, "steps": updated.StepCount},
+			Summary: map[string]any{"nodes": updated.NodeCount, "edges": updated.EdgeCount},
 		})
 		ok(c, updated)
 	}

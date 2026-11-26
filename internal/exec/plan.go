@@ -2,11 +2,48 @@ package exec
 
 // Plan is the immutable execution snapshot compiled at submit time.
 type Plan struct {
-	Kind           string  `json:"kind"`
-	Name           string  `json:"name"`
-	FailurePolicy  string  `json:"failure_policy,omitempty"` // abort | continue
-	MaxDurationSec int     `json:"max_duration_sec,omitempty"`
-	Stages         []Stage `json:"stages"`
+	Kind           string     `json:"kind"`
+	Name           string     `json:"name"`
+	FailurePolicy  string     `json:"failure_policy,omitempty"` // abort | continue
+	MaxDurationSec int        `json:"max_duration_sec,omitempty"`
+	Stages         []Stage    `json:"stages,omitempty"`
+	Graph          *GraphPlan `json:"graph,omitempty"`
+}
+
+// GraphPlan is a DAG execution plan: nodes run at most once per host, edges
+// activate target nodes when their condition matches.
+type GraphPlan struct {
+	Nodes []GraphNode `json:"nodes"`
+	Edges []GraphEdge `json:"edges"`
+}
+
+// GraphNode is one start marker or tool invocation in a graph plan.
+type GraphNode struct {
+	ID              string            `json:"id"`
+	Type            string            `json:"type"` // start | tool
+	Name            string            `json:"name"`
+	ToolID          string            `json:"tool_id,omitempty"`
+	ToolVersionID   string            `json:"tool_version_id,omitempty"`
+	ToolVersionNo   int               `json:"tool_version_no,omitempty"`
+	ContentHash     string            `json:"content_hash,omitempty"`
+	ToolType        string            `json:"tool_type,omitempty"`
+	Interpreter     string            `json:"interpreter,omitempty"`
+	Content         string            `json:"content,omitempty"`
+	PrepareCommand  string            `json:"prepare_command,omitempty"`
+	Sudo            bool              `json:"sudo,omitempty"`
+	TimeoutSec      int               `json:"timeout_sec,omitempty"`
+	RetryCount      int               `json:"retry_count,omitempty"`
+	RetryDelaySec   int               `json:"retry_delay_sec,omitempty"`
+	Params          map[string]string `json:"params,omitempty"`
+	SensitiveParams map[string]string `json:"sensitive_params,omitempty"`
+}
+
+// GraphEdge activates To when From's result matches Condition.
+type GraphEdge struct {
+	From      string `json:"from"`
+	To        string `json:"to"`
+	Condition string `json:"condition"`
+	Value     string `json:"value,omitempty"`
 }
 
 // Stage groups steps that run in parallel.

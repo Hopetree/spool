@@ -322,7 +322,7 @@ func (s *Service) Delete(ctx context.Context, id string) error {
 		return fmt.Errorf("check history: %w", err)
 	}
 	var flowRefs int
-	if err := s.db.GetContext(ctx, &flowRefs, `SELECT count(*) FROM flow_steps WHERE tool_id = ?`, id); err != nil {
+	if err := s.db.GetContext(ctx, &flowRefs, `SELECT count(*) FROM flow_nodes WHERE type = 'tool' AND tool_id = ?`, id); err != nil {
 		return fmt.Errorf("check flow refs: %w", err)
 	}
 	if history > 0 || flowRefs > 0 {
@@ -507,11 +507,11 @@ func (s *Service) References(ctx context.Context, toolID string) (*References, e
 	}
 	flows := []FlowRef{}
 	err := s.db.SelectContext(ctx, &flows, `SELECT f.id AS flow_id, f.name AS flow_name, f.enabled AS flow_enabled,
-		stg.name AS stage_name, st.name AS step_name
-		FROM flow_steps st
-		JOIN flow_stages stg ON stg.id = st.stage_id
-		JOIN flows f ON f.id = stg.flow_id
-		WHERE st.tool_id = ? ORDER BY f.name, stg.idx, st.idx`, toolID)
+		'流程图' AS stage_name, n.name AS step_name
+		FROM flow_nodes n
+		JOIN flows f ON f.id = n.flow_id
+		WHERE n.type = 'tool' AND n.tool_id = ?
+		ORDER BY f.name, n.name`, toolID)
 	if err != nil {
 		return nil, fmt.Errorf("list flow refs: %w", err)
 	}

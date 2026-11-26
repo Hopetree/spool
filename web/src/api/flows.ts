@@ -1,16 +1,22 @@
 import { request } from "./client";
 import type { ToolParam } from "./tools";
 
-export type FailurePolicy = "abort" | "continue";
+export type FlowNodeType = "start" | "tool";
+export type EdgeCondition =
+  | "always"
+  | "success"
+  | "failure"
+  | "output_contains"
+  | "output_not_contains";
 
 export interface FlowMapping {
   source: "flow" | "literal";
   value: string;
 }
 
-export interface FlowStep {
+export interface FlowNode {
   id: string;
-  index: number;
+  type: FlowNodeType;
   name: string;
   tool_id: string;
   tool_name: string;
@@ -19,15 +25,16 @@ export interface FlowStep {
   timeout_sec: number;
   retry_count: number;
   retry_delay_sec: number;
-  enabled: boolean;
+  x: number;
+  y: number;
 }
 
-export interface FlowStage {
+export interface FlowEdge {
   id: string;
-  index: number;
-  name: string;
-  always_run: boolean;
-  steps: FlowStep[];
+  from: string;
+  to: string;
+  condition: EdgeCondition;
+  value: string;
 }
 
 export interface FlowSummary {
@@ -35,42 +42,46 @@ export interface FlowSummary {
   name: string;
   description: string;
   params: ToolParam[];
-  failure_policy: FailurePolicy;
   max_duration_sec: number;
   enabled: boolean;
-  stage_count: number;
-  step_count: number;
+  node_count: number;
+  edge_count: number;
   created_at: number;
   updated_at: number;
 }
 
 export interface FlowDetail extends FlowSummary {
-  stages: FlowStage[];
+  nodes: FlowNode[];
+  edges: FlowEdge[];
 }
 
-export interface FlowStepInput {
+export interface FlowNodeInput {
+  id: string;
+  type: FlowNodeType;
   name: string;
   tool_id: string;
   mapping: Record<string, FlowMapping>;
   timeout_sec: number;
   retry_count: number;
   retry_delay_sec: number;
-  enabled: boolean;
+  x: number;
+  y: number;
 }
 
-export interface FlowStageInput {
-  name: string;
-  always_run: boolean;
-  steps: FlowStepInput[];
+export interface FlowEdgeInput {
+  from: string;
+  to: string;
+  condition: EdgeCondition;
+  value: string;
 }
 
 export interface FlowInput {
   name: string;
   description: string;
   params: ToolParam[];
-  failure_policy: FailurePolicy;
   max_duration_sec: number;
-  stages: FlowStageInput[];
+  nodes: FlowNodeInput[];
+  edges: FlowEdgeInput[];
 }
 
 export interface FlowList {
@@ -79,6 +90,14 @@ export interface FlowList {
   page: number;
   page_size: number;
 }
+
+export const conditionLabel: Record<EdgeCondition, string> = {
+  always: "总是",
+  success: "成功",
+  failure: "失败",
+  output_contains: "输出包含",
+  output_not_contains: "输出不包含",
+};
 
 function qs(params: object): string {
   const sp = new URLSearchParams();

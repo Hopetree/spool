@@ -519,3 +519,112 @@ func TestFlowMaxDuration(t *testing.T) {
 		t.Fatalf("step = %+v", steps[0])
 	}
 }
+
+func graphNode(id, name, content string) GraphNode {
+	return GraphNode{
+		ID: id, Type: "tool", Name: name, ToolType: "shell", Interpreter: "/bin/bash",
+		Content: content, TimeoutSec: 5,
+	}
+}
+
+func submitGraph(t *testing.T, fx *engineFixture, nodes []GraphNode, edges []GraphEdge) *Execution {
+	t.Helper()
+	plan := Plan{Kind: "flow", Name: "g", MaxDurationSec: 600, Graph: &GraphPlan{Nodes: nodes, Edges: edges}}
+	ex, err := fx.engine.Submit(context.Background(), SubmitRequest{
+		Kind: "flow", Name: "g", Plan: plan, HostIDs: []string{fx.hostID},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return ex
+}
+
+func TestGraphOutputConditionAndSkip(t *testing.T) {
+	runner := &fakeRunner{responses: []fakeResponse{{code: 0, stdout: "check ok\n"}, {code: 0, stdout: "good\n"}}}
+	fx := newEngineFixture(t, Config{}, &fakeRunnerWrapper{r: runner})
+	nodes := []GraphNode{
+		{ID: "start", Type: "start", Name: "开始"},
+		graphNode("n1", "check", "check"),
+		graphNode("n2", "good", "good"),
+		graphNode("n3", "bad", "bad"),
+	}
+	edges := []GraphEdge{
+		{From: "start", To: "n1", Condition: "always"},
+		{From: "n1", To: "n2", Condition: "output_contains", Value: "ok"},
+		{From: "n1", To: "n3", Condition: "output_contains", Value: "fail"},
+	}
+	ex := submitGraph(t, fx, nodes, edges)
+	final := waitTerminal(t, fx.engine, ex.ID)
+	if final.Status != "success" {
+		t.Fatalf("status = %q", final.Status)
+	}
+	steps, _ := fx.engine.StepRuns(context.Background(), ex.ID)
+	byNode := map[string]StepRun{}
+	for _, s := range steps {
+		byNode[s.NodeID] = s
+	}
+	if byNode["n1"].Status != "success" || byNode["n2"].Status != "success" || byNode["n3"].Status != "skipped" {
+		t.Fatalf("steps = %+v", steps)
+	}
+}
+
+func TestGraphParallelBranches(t *testing.T) {
+	runner := &fakeRunner{}
+	for i := 0; i < 2; i++ {
+		runner.responses = append(runner.responses, fakeResponse{sleep: 120 * time.Millisecond})
+	}
+	fx := newEngineFixture(t, Config{MaxConcurrentSteps: 2}, &fakeRunnerWrapper{r: runner})
+	nodes := []GraphNode{
+		{ID: "start", Type: "start", Name: "开始"},
+		graphNode("a", "a", "a"),
+		graphNode("b", "b", "b"),
+	}
+	edges := []GraphEdge{
+		{From: "start", To: "a", Condition: "always"},
+		{From: "start", To: "b", Condition: "always"},
+	}
+	ex := submitGraph(t, fx, nodes, edges)
+	if final := waitTerminal(t, fx.engine, ex.ID); final.Status != "success" {
+		t.Fatalf("status = %q", final.Status)
+	}
+	if got := atomic.LoadInt32(&runner.maxConcurrent); got != 2 {
+		t.Fatalf("max concurrent = %d, want 2", got)
+	}
+}
+
+func TestGraphHandledFailure(t *testing.T) {
+	runner := &fakeRunner{responses: []fakeResponse{{code: 1, stdout: "boom\n"}, {code: 0, stdout: "repair ok\n"}}}
+	fx := newEngineFixture(t, Config{}, &fakeRunnerWrapper{r: runner})
+	nodes := []GraphNode{
+		{ID: "start", Type: "start", Name: "开始"},
+		graphNode("check", "check", "check"),
+		graphNode("repair", "repair", "repair"),
+	}
+	edges := []GraphEdge{
+		{From: "start", To: "check", Condition: "always"},
+		{From: "check", To: "repair", Condition: "failure"},
+	}
+	ex := submitGraph(t, fx, nodes, edges)
+	final := waitTerminal(t, fx.engine, ex.ID)
+	if final.Status != "success" {
+		t.Fatalf("handled failure should keep flow success, got %q", final.Status)
+	}
+	steps, _ := fx.engine.StepRuns(context.Background(), ex.ID)
+	if len(steps) != 2 || steps[0].Status != "failed" || steps[1].Status != "success" {
+		t.Fatalf("steps = %+v", steps)
+	}
+}
+
+func TestGraphUnhandledFailure(t *testing.T) {
+	runner := &fakeRunner{responses: []fakeResponse{{code: 1, stdout: "boom\n"}}}
+	fx := newEngineFixture(t, Config{}, &fakeRunnerWrapper{r: runner})
+	nodes := []GraphNode{
+		{ID: "start", Type: "start", Name: "开始"},
+		graphNode("check", "check", "check"),
+	}
+	edges := []GraphEdge{{From: "start", To: "check", Condition: "always"}}
+	ex := submitGraph(t, fx, nodes, edges)
+	if final := waitTerminal(t, fx.engine, ex.ID); final.Status != "failed" {
+		t.Fatalf("status = %q", final.Status)
+	}
+}

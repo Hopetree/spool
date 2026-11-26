@@ -7,25 +7,17 @@ import {
   Popconfirm,
   Space,
   Switch,
-  Table,
   Tag,
   Typography,
 } from "antd";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams } from "react-router-dom";
 import { ApiError } from "../api/client";
-import {
-  copyFlow,
-  deleteFlow,
-  getFlow,
-  setFlowEnabled,
-  type FlowStage,
-} from "../api/flows";
+import { copyFlow, deleteFlow, getFlow, setFlowEnabled } from "../api/flows";
 import ExecuteFlowModal from "../components/ExecuteFlowModal";
 import ExecutionTable from "../components/ExecutionTable";
+import FlowGraph from "../components/FlowGraph";
 import { useAuthStore } from "../stores/auth";
-
-const policyLabel: Record<string, string> = { abort: "失败即中止后续阶段", continue: "失败后继续后续阶段" };
 
 export default function FlowDetail() {
   const { id } = useParams();
@@ -86,7 +78,7 @@ export default function FlowDetail() {
         </Typography.Title>
         {detail && (
           <Typography.Text type="secondary">
-            {detail.stage_count} 个阶段 · {detail.step_count} 个步骤
+            {detail.node_count} 个节点 · {detail.edge_count} 条连线
           </Typography.Text>
         )}
         {canRun && <Button onClick={() => setExecOpen(true)}>执行</Button>}
@@ -118,7 +110,6 @@ export default function FlowDetail() {
             size="small"
             items={[
               { key: "desc", label: "描述", children: detail.description || "—" },
-              { key: "policy", label: "失败策略", children: policyLabel[detail.failure_policy] ?? detail.failure_policy },
               { key: "duration", label: "单机最大时长", children: `${detail.max_duration_sec}s` },
               {
                 key: "params",
@@ -142,39 +133,11 @@ export default function FlowDetail() {
         )}
       </Card>
 
-      <Card title="阶段与步骤" style={{ marginBottom: 16 }} loading={isLoading}>
-        <Table<FlowStage>
-          rowKey="id"
-          dataSource={detail?.stages ?? []}
-          pagination={false}
-          size="small"
-          columns={[
-            { title: "序号", dataIndex: "index", width: 80 },
-            { title: "阶段", dataIndex: "name" },
-            {
-              title: "始终执行",
-              dataIndex: "always_run",
-              width: 100,
-              render: (v: boolean) => (v ? <Tag color="orange">是</Tag> : "否"),
-            },
-            {
-              title: "步骤",
-              render: (_, r) => (
-                <Space wrap>
-                  {r.steps.map((s) => (
-                    <Tag key={s.id}>{s.name}</Tag>
-                  ))}
-                </Space>
-              ),
-            },
-            { title: "步骤数", width: 90, render: (_, r) => r.steps.length },
-          ]}
-        />
+      <Card title="流程图" style={{ marginBottom: 16 }} loading={isLoading}>
+        {detail && <FlowGraph nodes={detail.nodes} edges={detail.edges} height={480} />}
       </Card>
 
-      <Card title="执行历史">
-        {id && <ExecutionTable kind="flow" refID={id} showFilters />}
-      </Card>
+      <Card title="执行历史">{id && <ExecutionTable kind="flow" refID={id} showFilters />}</Card>
 
       <ExecuteFlowModal flowID={id ?? null} open={execOpen} onClose={() => setExecOpen(false)} />
     </div>

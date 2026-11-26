@@ -120,11 +120,8 @@ func TestReferences(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = st.DB.Exec(`INSERT INTO flow_stages (id, flow_id, idx, name) VALUES ('stg1', 'f1', 1, '部署')`)
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, err = st.DB.Exec(`INSERT INTO flow_steps (id, stage_id, idx, name, tool_id) VALUES ('stp1', 'stg1', 1, '部署应用', ?)`, created.ID)
+	_, err = st.DB.Exec(`INSERT INTO flow_nodes (id, flow_id, node_key, type, name, tool_id, x, y)
+		VALUES ('node1', 'f1', 'n1', 'tool', '部署应用', ?, 0, 0)`, created.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -139,7 +136,7 @@ func TestReferences(t *testing.T) {
 		t.Fatalf("references: %v", err)
 	}
 	if len(refs.Flows) != 1 || refs.Flows[0].FlowName != "deploy-flow" ||
-		refs.Flows[0].StageName != "部署" || refs.Flows[0].StepName != "部署应用" {
+		refs.Flows[0].StageName != "流程图" || refs.Flows[0].StepName != "部署应用" {
 		t.Fatalf("flows = %+v", refs.Flows)
 	}
 	if len(refs.Schedules) != 1 || refs.Schedules[0].Name != "nightly" {
