@@ -13,6 +13,8 @@ import (
 	"github.com/Hopetree/spool/internal/exec"
 	"github.com/Hopetree/spool/internal/flow"
 	"github.com/Hopetree/spool/internal/host"
+	"github.com/Hopetree/spool/internal/notify"
+	"github.com/Hopetree/spool/internal/schedule"
 	"github.com/Hopetree/spool/internal/store"
 	"github.com/Hopetree/spool/internal/tool"
 )
@@ -28,6 +30,8 @@ type Deps struct {
 	Tools       *tool.Service
 	Flows       *flow.Service
 	Engine      *exec.Engine
+	Schedules   *schedule.Service
+	Notify      *notify.Service
 	Version     string
 	StartedAt   time.Time
 	WebHandler  http.Handler
@@ -81,6 +85,15 @@ func NewRouter(d Deps) *gin.Engine {
 	admin.DELETE("/flows/:id", deleteFlowHandler(d))
 	admin.POST("/flows/:id/enabled", setFlowEnabledHandler(d))
 	admin.POST("/flows/:id/copy", copyFlowHandler(d))
+	admin.POST("/schedules", createScheduleHandler(d))
+	admin.PUT("/schedules/:id", updateScheduleHandler(d))
+	admin.DELETE("/schedules/:id", deleteScheduleHandler(d))
+	admin.POST("/schedules/:id/enabled", setScheduleEnabledHandler(d))
+	admin.GET("/notify-channels", listChannelsHandler(d))
+	admin.POST("/notify-channels", createChannelHandler(d))
+	admin.PUT("/notify-channels/:id", updateChannelHandler(d))
+	admin.DELETE("/notify-channels/:id", deleteChannelHandler(d))
+	admin.POST("/notify-channels/:id/test", testChannelHandler(d))
 
 	authed.GET("/hosts", listHostsHandler(d))
 	authed.GET("/hosts/:id", getHostHandler(d))
@@ -91,6 +104,9 @@ func NewRouter(d Deps) *gin.Engine {
 	authed.GET("/tools/:id/versions/:no", toolVersionHandler(d))
 	authed.GET("/flows", listFlowsHandler(d))
 	authed.GET("/flows/:id", getFlowHandler(d))
+	authed.GET("/schedules", listSchedulesHandler(d))
+	authed.GET("/schedules/:id", getScheduleHandler(d))
+	authed.GET("/schedules/:id/next-runs", nextRunsHandler(d))
 	authed.GET("/executions", listExecutionsHandler(d))
 	authed.GET("/executions/:id", getExecutionHandler(d))
 	authed.GET("/executions/:id/events", executionEventsHandler(d))
@@ -104,6 +120,8 @@ func NewRouter(d Deps) *gin.Engine {
 	ops.POST("/executions/:id/cancel", cancelExecutionHandler(d))
 	ops.POST("/executions/:id/rerun", rerunExecutionHandler(d))
 	ops.POST("/executions/:id/host-runs/:hostRunId/cancel", cancelHostRunHandler(d))
+	ops.POST("/schedules/preview", previewCronHandler(d))
+	ops.POST("/schedules/:id/run", runScheduleHandler(d))
 
 	if d.WebHandler != nil {
 		r.NoRoute(gin.WrapH(d.WebHandler))

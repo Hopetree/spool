@@ -22,6 +22,8 @@ import (
 	"github.com/Hopetree/spool/internal/flow"
 	"github.com/Hopetree/spool/internal/host"
 	"github.com/Hopetree/spool/internal/lockfile"
+	"github.com/Hopetree/spool/internal/notify"
+	"github.com/Hopetree/spool/internal/schedule"
 	"github.com/Hopetree/spool/internal/sshx"
 	"github.com/Hopetree/spool/internal/store"
 	"github.com/Hopetree/spool/internal/tool"
@@ -98,6 +100,17 @@ func run() error {
 		return err
 	}
 	defer engine.Stop()
+	notifySvc := notify.NewService(st.DB, credSvc, cfg.Server.BaseURL)
+	loc, err := cfg.Location()
+	if err != nil {
+		return err
+	}
+	scheduleSvc := schedule.NewService(st.DB, toolSvc, flowSvc, credSvc, engine, notifySvc, auditSvc, loc)
+	engine.SetOnFinish(func(id string) { scheduleSvc.HandleExecutionFinished(context.Background(), id) })
+	if err := scheduleSvc.Start(context.Background()); err != nil {
+		return err
+	}
+	defer scheduleSvc.Stop()
 
 	initialPassword, created, err := authSvc.BootstrapAdmin(context.Background())
 	if err != nil {
@@ -117,6 +130,8 @@ func run() error {
 		Tools:       toolSvc,
 		Flows:       flowSvc,
 		Engine:      engine,
+		Schedules:   scheduleSvc,
+		Notify:      notifySvc,
 		Version:     version,
 		StartedAt:   time.Now(),
 		WebHandler:  web.Handler(),

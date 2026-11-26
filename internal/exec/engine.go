@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"path"
 	"path/filepath"
 	"strconv"
@@ -160,7 +161,13 @@ type Engine struct {
 	mu          sync.Mutex
 	execCancels map[string]context.CancelFunc
 	hostCancels map[string]context.CancelFunc
+
+	onFinish func(execID string)
 }
+
+// SetOnFinish registers a callback invoked after an execution reaches a
+// terminal state. Call before submitting work.
+func (e *Engine) SetOnFinish(fn func(execID string)) { e.onFinish = fn }
 
 // New builds an Engine.
 func New(db *sqlx.DB, creds *credential.Service, factory RunnerFactory, cfg Config) *Engine {
@@ -549,6 +556,17 @@ func (e *Engine) runExecution(execID string) {
 	log.Emit(Event{Type: "state", Entity: "execution", Status: status})
 	log.Emit(Event{Type: "end", Entity: "execution", Status: status})
 	e.hub.CloseExecution(execID)
+	if e.onFinish != nil {
+		fn := e.onFinish
+		go func() {
+			defer func() {
+				if r := recover(); r != nil {
+					slog.Error("execution finish callback panic", "exec", execID, "panic", r)
+				}
+			}()
+			fn(execID)
+		}()
+	}
 }
 
 func findPlanStep(plan Plan, stageIdx, stepIdx int) (Step, bool) {

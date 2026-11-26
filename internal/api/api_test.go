@@ -19,6 +19,8 @@ import (
 	"github.com/Hopetree/spool/internal/exec"
 	"github.com/Hopetree/spool/internal/flow"
 	"github.com/Hopetree/spool/internal/host"
+	"github.com/Hopetree/spool/internal/notify"
+	"github.com/Hopetree/spool/internal/schedule"
 	"github.com/Hopetree/spool/internal/sshx"
 	"github.com/Hopetree/spool/internal/store"
 	"github.com/Hopetree/spool/internal/tool"
@@ -82,6 +84,12 @@ func newTestEnv(t *testing.T) *testEnv {
 		t.Fatalf("engine start: %v", err)
 	}
 	t.Cleanup(engine.Stop)
+	notifySvc := notify.NewService(st.DB, credSvc, "")
+	scheduleSvc := schedule.NewService(st.DB, toolSvc, flowSvc, credSvc, engine, notifySvc, audit.NewService(st.DB), time.UTC)
+	if err := scheduleSvc.Start(context.Background()); err != nil {
+		t.Fatalf("schedule start: %v", err)
+	}
+	t.Cleanup(scheduleSvc.Stop)
 	env := &testEnv{
 		router: NewRouter(Deps{
 			Cfg:         &cfg,
@@ -93,6 +101,8 @@ func newTestEnv(t *testing.T) *testEnv {
 			Tools:       toolSvc,
 			Flows:       flowSvc,
 			Engine:      engine,
+			Schedules:   scheduleSvc,
+			Notify:      notifySvc,
 			Version:     "test",
 		}),
 		store:    st,
