@@ -19,6 +19,7 @@ import (
 	"github.com/Hopetree/spool/internal/config"
 	"github.com/Hopetree/spool/internal/credential"
 	"github.com/Hopetree/spool/internal/exec"
+	"github.com/Hopetree/spool/internal/flow"
 	"github.com/Hopetree/spool/internal/host"
 	"github.com/Hopetree/spool/internal/lockfile"
 	"github.com/Hopetree/spool/internal/sshx"
@@ -84,6 +85,7 @@ func run() error {
 	credSvc := credential.NewService(st.DB, cipher)
 	hostSvc := host.NewService(st.DB, credSvc, sshx.NewProber(), cfg.Security.HostKeyPolicy)
 	toolSvc := tool.NewService(st.DB)
+	flowSvc := flow.NewService(st.DB, toolSvc)
 	engine := exec.New(st.DB, credSvc, exec.NewSSHFactory(credSvc, cfg.Security.HostKeyPolicy), exec.Config{
 		MaxConcurrentSteps:    cfg.Execution.MaxConcurrentSteps,
 		MaxConcurrentHostRuns: cfg.Execution.MaxConcurrentHostRuns,
@@ -113,6 +115,7 @@ func run() error {
 		Credentials: credSvc,
 		Hosts:       hostSvc,
 		Tools:       toolSvc,
+		Flows:       flowSvc,
 		Engine:      engine,
 		Version:     version,
 		StartedAt:   time.Now(),
