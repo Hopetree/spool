@@ -1,0 +1,29 @@
+# Build outputs
+/spool
+/bin/
+/dist/
+*.exe
+*.test
+*.out
+
+# Frontend
+web/node_modules/
+web/dist/
+internal/web/dist/*
+!internal/web/dist/.gitkeep
+
+# Local runtime data
+/data/
+*.db
+*.db-wal
+*.db-shm
+master.key
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
+
+# Local config
+/config.yaml
+!config.example.yaml
