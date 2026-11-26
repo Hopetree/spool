@@ -179,6 +179,11 @@ func New(db *sqlx.DB, creds *credential.Service, factory RunnerFactory, cfg Conf
 // Hub exposes the SSE event hub.
 func (e *Engine) Hub() *Hub { return e.hub }
 
+// LogPath returns the JSONL log path for an execution.
+func (e *Engine) LogPath(execID string) string {
+	return filepath.Join(e.cfg.LogsDir, execID+".jsonl")
+}
+
 // Start marks unfinished runs as interrupted, then enables execution.
 func (e *Engine) Start(ctx context.Context) error {
 	now := time.Now().UnixMilli()
