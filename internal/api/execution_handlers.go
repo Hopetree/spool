@@ -454,6 +454,16 @@ func executionEventsHandler(d Deps) gin.HandlerFunc {
 			fail(c, http.StatusInternalServerError, "internal_error", "读取日志失败", nil)
 			return
 		}
+		if hostRunID := c.Query("host_run"); hostRunID != "" {
+			filtered := make([]exec.Event, 0, len(events))
+			for _, ev := range events {
+				if ev.Type == "log" && ev.HostRunID != hostRunID {
+					continue
+				}
+				filtered = append(filtered, ev)
+			}
+			events = filtered
+		}
 		ok(c, gin.H{"items": events, "status": ex.Status})
 	}
 }
@@ -486,9 +496,13 @@ func streamExecutionHandler(d Deps) gin.HandlerFunc {
 		c.Header("Connection", "keep-alive")
 		c.Header("X-Accel-Buffering", "no")
 
+		filterHost := c.Query("host_run")
 		last := after
 		write := func(ev exec.Event) {
 			if ev.Seq <= last {
+				return
+			}
+			if filterHost != "" && ev.Type == "log" && ev.HostRunID != filterHost {
 				return
 			}
 			b, err := json.Marshal(ev)

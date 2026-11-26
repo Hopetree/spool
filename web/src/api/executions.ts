@@ -176,10 +176,13 @@ export async function listEvents(
   id: string,
   afterSeq = 0,
   limit = 5000,
+  hostRunID?: string,
 ): Promise<{ items: ExecutionEvent[]; status: ExecutionStatus }> {
+  const sp = new URLSearchParams({ after_seq: String(afterSeq), limit: String(limit) });
+  if (hostRunID) sp.set("host_run", hostRunID);
   return request<{ items: ExecutionEvent[]; status: ExecutionStatus }>(
     "GET",
-    `/executions/${id}/events?after_seq=${afterSeq}&limit=${limit}`,
+    `/executions/${id}/events?${sp.toString()}`,
   );
 }
 

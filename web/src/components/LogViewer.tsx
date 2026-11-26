@@ -8,7 +8,15 @@ interface Line {
   data: string;
 }
 
-export default function LogViewer({ executionId, active }: { executionId: string; active: boolean }) {
+export default function LogViewer({
+  executionId,
+  active,
+  hostRunID,
+}: {
+  executionId: string;
+  active: boolean;
+  hostRunID?: string;
+}) {
   const [lines, setLines] = useState<Line[]>([]);
   const [status, setStatus] = useState<ExecutionStatus>();
   const [follow, setFollow] = useState(true);
@@ -29,7 +37,7 @@ export default function LogViewer({ executionId, active }: { executionId: string
 
     const load = async () => {
       try {
-        const res = await listEvents(executionId, 0, 20000);
+        const res = await listEvents(executionId, 0, 20000, hostRunID);
         if (cancelled) return;
         setStatus(res.status);
         setLines(
@@ -39,7 +47,8 @@ export default function LogViewer({ executionId, active }: { executionId: string
         );
         if (!active) return;
         const last = res.items.length ? res.items[res.items.length - 1].seq : 0;
-        source = new EventSource(`/api/v1/executions/${executionId}/stream?after_seq=${last}`);
+        const suffix = hostRunID ? `&host_run=${hostRunID}` : "";
+        source = new EventSource(`/api/v1/executions/${executionId}/stream?after_seq=${last}${suffix}`);
         source.addEventListener("log", (e) => append(JSON.parse((e as MessageEvent).data) as ExecutionEvent));
         source.addEventListener("state", (e) => {
           const ev = JSON.parse((e as MessageEvent).data) as ExecutionEvent;
@@ -55,7 +64,7 @@ export default function LogViewer({ executionId, active }: { executionId: string
       cancelled = true;
       source?.close();
     };
-  }, [executionId, active]);
+  }, [executionId, active, hostRunID]);
 
   useEffect(() => {
     if (follow && boxRef.current) {
