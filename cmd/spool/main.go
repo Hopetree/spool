@@ -19,6 +19,7 @@ import (
 	"github.com/Hopetree/spool/internal/config"
 	"github.com/Hopetree/spool/internal/lockfile"
 	"github.com/Hopetree/spool/internal/store"
+	"github.com/Hopetree/spool/internal/web"
 )
 
 var version = "dev"
@@ -72,12 +73,13 @@ func run() error {
 	}
 
 	router := api.NewRouter(api.Deps{
-		Cfg:       cfg,
-		Store:     st,
-		Auth:      authSvc,
-		Audit:     auditSvc,
-		Version:   version,
-		StartedAt: time.Now(),
+		Cfg:        cfg,
+		Store:      st,
+		Auth:       authSvc,
+		Audit:      auditSvc,
+		Version:    version,
+		StartedAt:  time.Now(),
+		WebHandler: web.Handler(),
 	})
 
 	srv := &http.Server{
