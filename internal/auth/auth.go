@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"regexp"
 	"strings"
 	"time"
 
@@ -236,4 +237,209 @@ func (s *Service) BootstrapAdmin(ctx context.Context) (string, bool, error) {
 		return "", false, fmt.Errorf("insert admin: %w", err)
 	}
 	return password, true, nil
+}
+
+// Errors returned by user administration.
+var (
+	ErrUserNotFound  = errors.New("user not found")
+	ErrUserExists    = errors.New("username already exists")
+	ErrLastAdmin     = errors.New("cannot disable or remove the last admin")
+	ErrSelfOperation = errors.New("cannot perform this operation on yourself")
+)
+
+// UserView is the safe, public view of a user account.
+type UserView struct {
+	ID                 string `json:"id"`
+	Username           string `json:"username"`
+	DisplayName        string `json:"display_name"`
+	Role               string `json:"role"`
+	Enabled            bool   `json:"enabled"`
+	MustChangePassword bool   `json:"must_change_password"`
+	LastLoginAt        *int64 `json:"last_login_at"`
+	CreatedAt          int64  `json:"created_at"`
+	UpdatedAt          int64  `json:"updated_at"`
+}
+
+func (u User) view() UserView {
+	return UserView{
+		ID: u.ID, Username: u.Username, DisplayName: u.DisplayName, Role: u.Role,
+		Enabled: u.Enabled, MustChangePassword: u.MustChangePassword,
+		LastLoginAt: u.LastLoginAt, CreatedAt: u.CreatedAt, UpdatedAt: u.UpdatedAt,
+	}
+}
+
+var usernameRe = regexp.MustCompile(`^[A-Za-z0-9_.-]{3,32}$`)
+
+func validateUserInput(username, displayName, role string) error {
+	if !usernameRe.MatchString(username) {
+		return invalidUser("用户名需为 3-32 位字母、数字、点、下划线或短横线")
+	}
+	if strings.TrimSpace(displayName) == "" {
+		return invalidUser("显示名称不能为空")
+	}
+	if len(displayName) > 64 {
+		return invalidUser("显示名称不能超过 64 个字符")
+	}
+	switch role {
+	case "admin", "operator", "viewer":
+	default:
+		return invalidUser("角色必须是 admin/operator/viewer")
+	}
+	return nil
+}
+
+// UserValidationError marks invalid user input.
+type UserValidationError struct{ Message string }
+
+func (e *UserValidationError) Error() string { return e.Message }
+
+func invalidUser(msg string) error { return &UserValidationError{Message: msg} }
+
+// ListUsers returns all accounts.
+func (s *Service) ListUsers(ctx context.Context) ([]UserView, error) {
+	users := []User{}
+	if err := s.db.SelectContext(ctx, &users, `SELECT id, username, display_name, password_hash, role, enabled,
+		must_change_password, last_login_at, created_at, updated_at FROM users ORDER BY username`); err != nil {
+		return nil, fmt.Errorf("list users: %w", err)
+	}
+	out := make([]UserView, 0, len(users))
+	for _, u := range users {
+		out = append(out, u.view())
+	}
+	return out, nil
+}
+
+func (s *Service) getUser(ctx context.Context, id string) (*User, error) {
+	var u User
+	err := s.db.GetContext(ctx, &u, `SELECT id, username, display_name, password_hash, role, enabled,
+		must_change_password, last_login_at, created_at, updated_at FROM users WHERE id = ?`, id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrUserNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("get user: %w", err)
+	}
+	return &u, nil
+}
+
+// CreateUser adds an account that must change its password on first login.
+func (s *Service) CreateUser(ctx context.Context, username, displayName, role, password string) (*UserView, error) {
+	username = strings.TrimSpace(username)
+	displayName = strings.TrimSpace(displayName)
+	if err := validateUserInput(username, displayName, role); err != nil {
+		return nil, err
+	}
+	if err := ValidatePassword(password); err != nil {
+		return nil, err
+	}
+	hash, err := s.HashPassword(password)
+	if err != nil {
+		return nil, err
+	}
+	id := store.NewULID()
+	now := s.nowMs()
+	_, err = s.db.ExecContext(ctx, `INSERT INTO users (id, username, display_name, password_hash, role, enabled, must_change_password, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, 1, 1, ?, ?)`, id, username, displayName, hash, role, now, now)
+	if err != nil {
+		if strings.Contains(err.Error(), "UNIQUE constraint failed") {
+			return nil, ErrUserExists
+		}
+		return nil, fmt.Errorf("insert user: %w", err)
+	}
+	u, err := s.getUser(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	v := u.view()
+	return &v, nil
+}
+
+func (s *Service) enabledAdmins(ctx context.Context) (int, error) {
+	var n int
+	err := s.db.GetContext(ctx, &n, `SELECT count(*) FROM users WHERE role = 'admin' AND enabled = 1`)
+	return n, err
+}
+
+// UpdateUser changes display name, role and enabled state.
+func (s *Service) UpdateUser(ctx context.Context, id, displayName, role string, enabled bool) (*UserView, error) {
+	target, err := s.getUser(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	displayName = strings.TrimSpace(displayName)
+	if err := validateUserInput(target.Username, displayName, role); err != nil {
+		return nil, err
+	}
+	if target.Role == "admin" && (role != "admin" || !enabled) {
+		n, err := s.enabledAdmins(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if n <= 1 {
+			return nil, ErrLastAdmin
+		}
+	}
+	_, err = s.db.ExecContext(ctx, `UPDATE users SET display_name = ?, role = ?, enabled = ?, updated_at = ? WHERE id = ?`,
+		displayName, role, enabled, s.nowMs(), id)
+	if err != nil {
+		return nil, fmt.Errorf("update user: %w", err)
+	}
+	u, err := s.getUser(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	v := u.view()
+	return &v, nil
+}
+
+// ResetPassword sets a new password and forces a change at next login.
+func (s *Service) ResetPassword(ctx context.Context, id, password string) error {
+	if _, err := s.getUser(ctx, id); err != nil {
+		return err
+	}
+	if err := ValidatePassword(password); err != nil {
+		return err
+	}
+	hash, err := s.HashPassword(password)
+	if err != nil {
+		return err
+	}
+	_, err = s.db.ExecContext(ctx, `UPDATE users SET password_hash = ?, must_change_password = 1, updated_at = ? WHERE id = ?`,
+		hash, s.nowMs(), id)
+	if err != nil {
+		return fmt.Errorf("reset password: %w", err)
+	}
+	return s.LogoutAll(ctx, id)
+}
+
+// LogoutAll revokes every session of a user.
+func (s *Service) LogoutAll(ctx context.Context, id string) error {
+	if _, err := s.db.ExecContext(ctx, `DELETE FROM sessions WHERE user_id = ?`, id); err != nil {
+		return fmt.Errorf("logout all: %w", err)
+	}
+	return nil
+}
+
+// DeleteUser removes an account, guarding self-deletion and the last admin.
+func (s *Service) DeleteUser(ctx context.Context, id, actorID string) error {
+	target, err := s.getUser(ctx, id)
+	if err != nil {
+		return err
+	}
+	if id == actorID {
+		return ErrSelfOperation
+	}
+	if target.Role == "admin" && target.Enabled {
+		n, err := s.enabledAdmins(ctx)
+		if err != nil {
+			return err
+		}
+		if n <= 1 {
+			return ErrLastAdmin
+		}
+	}
+	if _, err := s.db.ExecContext(ctx, `DELETE FROM users WHERE id = ?`, id); err != nil {
+		return fmt.Errorf("delete user: %w", err)
+	}
+	return nil
 }

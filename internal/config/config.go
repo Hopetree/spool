@@ -43,6 +43,13 @@ type ExecutionConfig struct {
 	RetentionDays         int    `yaml:"retention_days"`
 }
 
+// TransferConfig tunes file transfer limits.
+type TransferConfig struct {
+	MaxUploadMB   int `yaml:"max_upload_mb"`
+	MaxDownloadMB int `yaml:"max_download_mb"`
+	Concurrency   int `yaml:"concurrency"`
+}
+
 // Config is the root configuration loaded from YAML with env overrides.
 type Config struct {
 	Server    ServerConfig    `yaml:"server"`
@@ -51,6 +58,7 @@ type Config struct {
 	Logging   LoggingConfig   `yaml:"logging"`
 	Security  SecurityConfig  `yaml:"security"`
 	Execution ExecutionConfig `yaml:"execution"`
+	Transfer  TransferConfig  `yaml:"transfer"`
 }
 
 // Default returns the built-in configuration used when a field is omitted.
@@ -68,6 +76,9 @@ func Default() Config {
 	c.Execution.StepOutputLimitMB = 20
 	c.Execution.RemoteBaseDir = "/tmp"
 	c.Execution.RetentionDays = 90
+	c.Transfer.MaxUploadMB = 512
+	c.Transfer.MaxDownloadMB = 200
+	c.Transfer.Concurrency = 10
 	return c
 }
 
@@ -158,6 +169,15 @@ func (c *Config) Validate() error {
 	}
 	if c.Execution.RetentionDays <= 0 {
 		return fmt.Errorf("execution.retention_days must be > 0")
+	}
+	if c.Transfer.MaxUploadMB <= 0 {
+		return fmt.Errorf("transfer.max_upload_mb must be > 0")
+	}
+	if c.Transfer.MaxDownloadMB <= 0 {
+		return fmt.Errorf("transfer.max_download_mb must be > 0")
+	}
+	if c.Transfer.Concurrency <= 0 {
+		return fmt.Errorf("transfer.concurrency must be > 0")
 	}
 	return nil
 }

@@ -67,6 +67,20 @@ func BuildToolPlan(name string, v ToolVersionSnapshot, params, sensitiveParams m
 	}
 }
 
+// BuildAdhocPlan wraps an inline shell command as a single-step plan.
+func BuildAdhocPlan(command string, timeoutSec int, sudo bool) Plan {
+	if timeoutSec <= 0 {
+		timeoutSec = 300
+	}
+	return Plan{
+		Kind: "adhoc", Name: "临时命令",
+		Stages: []Stage{{Index: 1, Name: "执行", Steps: []Step{{
+			Index: 1, Name: "临时命令", Type: "shell", Interpreter: "/bin/bash",
+			Content: command, TimeoutSec: timeoutSec, Sudo: sudo,
+		}}}},
+	}
+}
+
 // ToolVersionSnapshot is the subset of a tool version needed to build a plan.
 type ToolVersionSnapshot struct {
 	ToolID         string

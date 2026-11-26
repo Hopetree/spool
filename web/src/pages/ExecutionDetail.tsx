@@ -141,6 +141,14 @@ export default function ExecutionDetail() {
         )}
       </Card>
 
+      {data?.kind === "adhoc" && data.command && (
+        <Card title="命令" style={{ marginBottom: 16 }}>
+          <pre style={{ margin: 0, whiteSpace: "pre-wrap", wordBreak: "break-all", fontSize: 12 }}>
+            {data.command}
+          </pre>
+        </Card>
+      )}
+
       <Card title="主机" style={{ marginBottom: 16 }}>
         <Table<HostRun>
           rowKey="id"

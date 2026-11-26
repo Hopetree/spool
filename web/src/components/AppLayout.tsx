@@ -1,6 +1,10 @@
 import {
+  AuditOutlined,
   BellOutlined,
   ClockCircleOutlined,
+  CodeOutlined,
+  FolderOpenOutlined,
+  TeamOutlined,
   CloudServerOutlined,
   DeploymentUnitOutlined,
   HistoryOutlined,
@@ -31,11 +35,15 @@ export default function AppLayout() {
     { key: "/tools", icon: <ToolOutlined />, label: <Link to="/tools">工具</Link> },
     { key: "/flows", icon: <DeploymentUnitOutlined />, label: <Link to="/flows">流程</Link> },
     { key: "/executions", icon: <HistoryOutlined />, label: <Link to="/executions">执行历史</Link> },
+    { key: "/adhoc", icon: <CodeOutlined />, label: <Link to="/adhoc">临时命令</Link> },
     { key: "/schedules", icon: <ClockCircleOutlined />, label: <Link to="/schedules">定时任务</Link> },
+    { key: "/files", icon: <FolderOpenOutlined />, label: <Link to="/files">文件分发</Link> },
   ];
   if (user?.role === "admin") {
     items.push({ key: "/credentials", icon: <KeyOutlined />, label: <Link to="/credentials">凭据</Link> });
     items.push({ key: "/channels", icon: <BellOutlined />, label: <Link to="/channels">通知渠道</Link> });
+    items.push({ key: "/users", icon: <TeamOutlined />, label: <Link to="/users">用户</Link> });
+    items.push({ key: "/audit", icon: <AuditOutlined />, label: <Link to="/audit">审计日志</Link> });
   }
 
   return (

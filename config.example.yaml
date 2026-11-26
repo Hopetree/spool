@@ -21,3 +21,7 @@ execution:
   step_output_limit_mb: 20
   remote_base_dir: /tmp
   retention_days: 90
+transfer:
+  max_upload_mb: 512
+  max_download_mb: 200
+  concurrency: 10

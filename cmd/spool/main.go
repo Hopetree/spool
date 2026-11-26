@@ -27,6 +27,7 @@ import (
 	"github.com/Hopetree/spool/internal/sshx"
 	"github.com/Hopetree/spool/internal/store"
 	"github.com/Hopetree/spool/internal/tool"
+	"github.com/Hopetree/spool/internal/transfer"
 	"github.com/Hopetree/spool/internal/web"
 )
 
@@ -101,6 +102,12 @@ func run() error {
 	}
 	defer engine.Stop()
 	notifySvc := notify.NewService(st.DB, credSvc, cfg.Server.BaseURL)
+	transferSvc := transfer.NewService(st.DB, credSvc, cfg.Security.HostKeyPolicy, transfer.Config{
+		TempDir:          filepath.Join(cfg.DataDir, "tmp"),
+		MaxUploadBytes:   int64(cfg.Transfer.MaxUploadMB) * 1024 * 1024,
+		MaxDownloadBytes: int64(cfg.Transfer.MaxDownloadMB) * 1024 * 1024,
+		Concurrency:      cfg.Transfer.Concurrency,
+	})
 	loc, err := cfg.Location()
 	if err != nil {
 		return err
@@ -132,6 +139,7 @@ func run() error {
 		Engine:      engine,
 		Schedules:   scheduleSvc,
 		Notify:      notifySvc,
+		Transfers:   transferSvc,
 		Version:     version,
 		StartedAt:   time.Now(),
 		WebHandler:  web.Handler(),

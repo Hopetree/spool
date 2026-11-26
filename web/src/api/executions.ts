@@ -70,6 +70,7 @@ export interface StepRun {
 
 export interface ExecutionDetail extends Execution {
   params: Record<string, string>;
+  command?: string;
   host_runs: HostRun[];
   step_runs: StepRun[];
 }
@@ -143,6 +144,18 @@ export function runTool(input: RunToolInput): Promise<Execution> {
 }
 
 export function runFlow(input: RunFlowInput): Promise<Execution> {
+  return request<Execution>("POST", "/executions", input);
+}
+
+export interface RunAdhocInput {
+  kind: "adhoc";
+  command: string;
+  timeout_sec: number;
+  sudo: boolean;
+  host_ids: string[];
+}
+
+export function runAdhoc(input: RunAdhocInput): Promise<Execution> {
   return request<Execution>("POST", "/executions", input);
 }
 

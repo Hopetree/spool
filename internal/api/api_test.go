@@ -24,6 +24,7 @@ import (
 	"github.com/Hopetree/spool/internal/sshx"
 	"github.com/Hopetree/spool/internal/store"
 	"github.com/Hopetree/spool/internal/tool"
+	"github.com/Hopetree/spool/internal/transfer"
 )
 
 type stubProber struct {
@@ -85,6 +86,12 @@ func newTestEnv(t *testing.T) *testEnv {
 	}
 	t.Cleanup(engine.Stop)
 	notifySvc := notify.NewService(st.DB, credSvc, "")
+	transferSvc := transfer.NewService(st.DB, credSvc, "tofu", transfer.Config{
+		TempDir:          filepath.Join(cfg.DataDir, "tmp"),
+		MaxUploadBytes:   10 * 1024 * 1024,
+		MaxDownloadBytes: 10 * 1024 * 1024,
+		Concurrency:      2,
+	})
 	scheduleSvc := schedule.NewService(st.DB, toolSvc, flowSvc, credSvc, engine, notifySvc, audit.NewService(st.DB), time.UTC)
 	if err := scheduleSvc.Start(context.Background()); err != nil {
 		t.Fatalf("schedule start: %v", err)
@@ -103,6 +110,7 @@ func newTestEnv(t *testing.T) *testEnv {
 			Engine:      engine,
 			Schedules:   scheduleSvc,
 			Notify:      notifySvc,
+			Transfers:   transferSvc,
 			Version:     "test",
 		}),
 		store:    st,

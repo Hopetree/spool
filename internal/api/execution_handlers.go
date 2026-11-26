@@ -17,15 +17,19 @@ import (
 )
 
 type runInput struct {
-	Kind    string            `json:"kind"`
-	RefID   string            `json:"ref_id"`
-	Params  map[string]string `json:"params"`
-	HostIDs []string          `json:"host_ids"`
+	Kind       string            `json:"kind"`
+	RefID      string            `json:"ref_id"`
+	Params     map[string]string `json:"params"`
+	HostIDs    []string          `json:"host_ids"`
+	Command    string            `json:"command"`
+	TimeoutSec int               `json:"timeout_sec"`
+	Sudo       bool              `json:"sudo"`
 }
 
 type executionDTO struct {
 	exec.Execution
 	Params   map[string]string `json:"params"`
+	Command  string            `json:"command,omitempty"`
 	HostRuns []exec.HostRun    `json:"host_runs,omitempty"`
 	StepRuns []exec.StepRun    `json:"step_runs,omitempty"`
 }
@@ -144,7 +148,12 @@ func getExecutionHandler(d Deps) gin.HandlerFunc {
 		steps, _ := d.Engine.StepRuns(ctx, ex.ID)
 		params := map[string]string{}
 		_ = json.Unmarshal([]byte(ex.ParamsJSON), &params)
-		ok(c, executionDTO{Execution: *ex, Params: params, HostRuns: hostRuns, StepRuns: steps})
+		command := ""
+		if ex.Kind == "adhoc" {
+			command = params["command"]
+			delete(params, "command")
+		}
+		ok(c, executionDTO{Execution: *ex, Params: params, Command: command, HostRuns: hostRuns, StepRuns: steps})
 	}
 }
 
@@ -155,7 +164,7 @@ func createExecutionHandler(d Deps) gin.HandlerFunc {
 			fail(c, http.StatusBadRequest, "validation_failed", "请求格式不正确", nil)
 			return
 		}
-		if in.RefID == "" || len(in.HostIDs) == 0 {
+		if len(in.HostIDs) == 0 || (in.Kind != "adhoc" && in.RefID == "") {
 			fail(c, http.StatusBadRequest, "validation_failed", "必须选择执行对象和主机", nil)
 			return
 		}
@@ -212,6 +221,30 @@ func createExecutionHandler(d Deps) gin.HandlerFunc {
 			}
 			plan, plain, sensitive = res.Plan, res.Plain, res.Sensitive
 			name, refID = detail.Name, detail.ID
+		case "adhoc":
+			command := strings.TrimSpace(in.Command)
+			if command == "" {
+				fail(c, http.StatusBadRequest, "validation_failed", "命令不能为空", nil)
+				return
+			}
+			if len(command) > 20000 {
+				fail(c, http.StatusBadRequest, "validation_failed", "命令不能超过 20000 个字符", nil)
+				return
+			}
+			timeout := in.TimeoutSec
+			if timeout == 0 {
+				timeout = 300
+			}
+			if timeout < 1 || timeout > 86400 {
+				fail(c, http.StatusBadRequest, "validation_failed", "超时必须在 1-86400 秒之间", nil)
+				return
+			}
+			plan = exec.BuildAdhocPlan(command, timeout, in.Sudo)
+			plain = map[string]string{
+				"command": command, "timeout_sec": strconv.Itoa(timeout), "sudo": strconv.FormatBool(in.Sudo),
+			}
+			sensitive = map[string]string{}
+			name, refID = "临时命令", ""
 		default:
 			fail(c, http.StatusBadRequest, "unsupported_kind", "仅支持执行工具或流程", nil)
 			return
@@ -229,10 +262,18 @@ func createExecutionHandler(d Deps) gin.HandlerFunc {
 			fail(c, http.StatusInternalServerError, "internal_error", "提交执行失败", nil)
 			return
 		}
+		summary := map[string]any{"kind": in.Kind, "ref_id": refID, "hosts": ex.HostTotal}
+		if in.Kind == "adhoc" {
+			preview := in.Command
+			if len(preview) > 200 {
+				preview = preview[:200]
+			}
+			summary["command"] = preview
+		}
 		writeAudit(c, d, audit.Entry{
 			ActorID: u.ID, ActorName: u.Username, Action: "execution.start",
 			ResourceType: "execution", ResourceID: ex.ID, ResourceName: ex.NameSnapshot,
-			Summary: map[string]any{"kind": in.Kind, "ref_id": refID, "hosts": ex.HostTotal},
+			Summary: summary,
 		})
 		c.JSON(http.StatusCreated, ex)
 	}
@@ -326,6 +367,20 @@ func rerunExecutionHandler(d Deps) gin.HandlerFunc {
 			}
 			plan = exec.BuildToolPlan(detail.Name, toolSnapshot(detail), plain, sensitiveRefs)
 			name = detail.Name
+		case "adhoc":
+			command := stored["command"]
+			if command == "" {
+				fail(c, http.StatusBadRequest, "validation_failed", "原执行没有可重跑的命令", nil)
+				return
+			}
+			timeout, _ := strconv.Atoi(stored["timeout_sec"])
+			sudo := stored["sudo"] == "true"
+			plan = exec.BuildAdhocPlan(command, timeout, sudo)
+			plain = map[string]string{
+				"command": command, "timeout_sec": strconv.Itoa(timeout), "sudo": strconv.FormatBool(sudo),
+			}
+			sensitive = map[string]string{}
+			name = "临时命令"
 		case "flow":
 			detail, err := d.Flows.Get(ctx, old.RefID)
 			if err != nil {

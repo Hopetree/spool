@@ -1,12 +1,15 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 import AppLayout from "./components/AppLayout";
 import ProtectedRoute from "./components/ProtectedRoute";
+import Adhoc from "./pages/Adhoc";
+import Audit from "./pages/Audit";
 import Channels from "./pages/Channels";
 import Credentials from "./pages/Credentials";
 import ExecutionDetail from "./pages/ExecutionDetail";
 import FlowEditor from "./pages/FlowEditor";
 import Flows from "./pages/Flows";
 import Executions from "./pages/Executions";
+import Files from "./pages/Files";
 import Groups from "./pages/Groups";
 import Home from "./pages/Home";
 import Hosts from "./pages/Hosts";
@@ -16,6 +19,7 @@ import ScheduleEditor from "./pages/ScheduleEditor";
 import Schedules from "./pages/Schedules";
 import ToolEditor from "./pages/ToolEditor";
 import Tools from "./pages/Tools";
+import Users from "./pages/Users";
 
 export default function App() {
   return (
@@ -39,6 +43,10 @@ export default function App() {
           <Route path="schedules/new" element={<ScheduleEditor />} />
           <Route path="schedules/:id" element={<ScheduleEditor />} />
           <Route path="channels" element={<Channels />} />
+          <Route path="adhoc" element={<Adhoc />} />
+          <Route path="files" element={<Files />} />
+          <Route path="users" element={<Users />} />
+          <Route path="audit" element={<Audit />} />
           <Route path="password" element={<Password />} />
         </Route>
       </Route>

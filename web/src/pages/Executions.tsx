@@ -41,6 +41,7 @@ export default function Executions() {
           options={[
             { value: "tool", label: "工具" },
             { value: "flow", label: "流程" },
+            { value: "adhoc", label: "临时命令" },
           ]}
         />
         <Select

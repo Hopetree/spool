@@ -17,6 +17,7 @@ import (
 	"github.com/Hopetree/spool/internal/schedule"
 	"github.com/Hopetree/spool/internal/store"
 	"github.com/Hopetree/spool/internal/tool"
+	"github.com/Hopetree/spool/internal/transfer"
 )
 
 // Deps carries the services the HTTP layer needs.
@@ -32,6 +33,7 @@ type Deps struct {
 	Engine      *exec.Engine
 	Schedules   *schedule.Service
 	Notify      *notify.Service
+	Transfers   *transfer.Service
 	Version     string
 	StartedAt   time.Time
 	WebHandler  http.Handler
@@ -94,6 +96,13 @@ func NewRouter(d Deps) *gin.Engine {
 	admin.PUT("/notify-channels/:id", updateChannelHandler(d))
 	admin.DELETE("/notify-channels/:id", deleteChannelHandler(d))
 	admin.POST("/notify-channels/:id/test", testChannelHandler(d))
+	admin.GET("/users", listUsersHandler(d))
+	admin.POST("/users", createUserHandler(d))
+	admin.PUT("/users/:id", updateUserHandler(d))
+	admin.DELETE("/users/:id", deleteUserHandler(d))
+	admin.POST("/users/:id/reset-password", resetUserPasswordHandler(d))
+	admin.POST("/users/:id/logout-all", logoutAllSessionsHandler(d))
+	admin.GET("/audit", listAuditHandler(d))
 
 	authed.GET("/hosts", listHostsHandler(d))
 	authed.GET("/hosts/:id", getHostHandler(d))
@@ -107,6 +116,8 @@ func NewRouter(d Deps) *gin.Engine {
 	authed.GET("/schedules", listSchedulesHandler(d))
 	authed.GET("/schedules/:id", getScheduleHandler(d))
 	authed.GET("/schedules/:id/next-runs", nextRunsHandler(d))
+	authed.GET("/transfers", listTransfersHandler(d))
+	authed.GET("/transfers/:id", getTransferHandler(d))
 	authed.GET("/executions", listExecutionsHandler(d))
 	authed.GET("/executions/:id", getExecutionHandler(d))
 	authed.GET("/executions/:id/events", executionEventsHandler(d))
@@ -122,6 +133,9 @@ func NewRouter(d Deps) *gin.Engine {
 	ops.POST("/executions/:id/host-runs/:hostRunId/cancel", cancelHostRunHandler(d))
 	ops.POST("/schedules/preview", previewCronHandler(d))
 	ops.POST("/schedules/:id/run", runScheduleHandler(d))
+	ops.POST("/transfers/upload", uploadTransferHandler(d))
+	ops.POST("/transfers/:id/cancel", cancelTransferHandler(d))
+	ops.GET("/transfers/download", downloadTransferHandler(d))
 
 	if d.WebHandler != nil {
 		r.NoRoute(gin.WrapH(d.WebHandler))
