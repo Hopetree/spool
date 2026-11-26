@@ -79,14 +79,14 @@ README.md
   - `func (c *Config) Validate() error`
   - `func (c *Config) Location() (*time.Location, error)`
 
-- [ ] **Step 1: 初始化模块**
+- [x] **Step 1: 初始化模块**
 
 ```bash
 cd /Users/leizhu/Documents/Develop/zcode/spool
 go mod init github.com/Hopetree/spool
 ```
 
-- [ ] **Step 2: 写失败测试**
+- [x] **Step 2: 写失败测试**
 
 ```go
 package config
@@ -158,12 +158,12 @@ func TestValidateRejectsBadValues(t *testing.T) {
 }
 ```
 
-- [ ] **Step 3: 运行测试确认失败**
+- [x] **Step 3: 运行测试确认失败**
 
 Run: `go test ./internal/config/ -v`
 Expected: FAIL（包内无实现，编译失败或 undefined）
 
-- [ ] **Step 4: 实现配置**
+- [x] **Step 4: 实现配置**
 
 `internal/config/config.go` 要点：
 
@@ -274,12 +274,12 @@ func (c *Config) Location() (*time.Location, error) {
 }
 ```
 
-- [ ] **Step 5: 运行测试确认通过**
+- [x] **Step 5: 运行测试确认通过**
 
 Run: `go test ./internal/config/ -v`
 Expected: PASS（5 个测试）
 
-- [ ] **Step 6: 提交**
+- [x] **Step 6: 提交**
 
 ```bash
 git add go.mod internal/config
@@ -303,7 +303,7 @@ git commit -m "feat(config): add yaml config with defaults and env overrides"
   - `func (s *Store) Close() error`
   - `func NewULID() string`（供全项目复用；基于 `oklog/ulid/v2` 的 `ulid.Make().String()`）
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 ```go
 package store
@@ -354,12 +354,12 @@ func TestSessionCascadeOnUserDelete(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: 运行确认失败**
+- [x] **Step 2: 运行确认失败**
 
 Run: `go test ./internal/store/ -v`
 Expected: FAIL（undefined: Open）
 
-- [ ] **Step 3: 写迁移 SQL**
+- [x] **Step 3: 写迁移 SQL**
 
 `internal/store/migrations/0001_init.sql`：
 
@@ -418,7 +418,7 @@ DROP TABLE sessions;
 DROP TABLE users;
 ```
 
-- [ ] **Step 4: 实现 Store**
+- [x] **Step 4: 实现 Store**
 
 `internal/store/store.go`：
 
@@ -470,12 +470,12 @@ func (s *Store) Close() error { return s.DB.Close() }
 
 依赖：`go get github.com/jmoiron/sqlx github.com/pressly/goose/v3 modernc.org/sqlite github.com/oklog/ulid/v2`
 
-- [ ] **Step 5: 运行测试确认通过**
+- [x] **Step 5: 运行测试确认通过**
 
 Run: `go test ./internal/store/ -v`
 Expected: PASS（3 个测试）
 
-- [ ] **Step 6: 提交**
+- [x] **Step 6: 提交**
 
 ```bash
 git add go.mod go.sum internal/store
@@ -505,7 +505,7 @@ git commit -m "feat(store): sqlite store with embedded goose migrations"
   - 哨兵错误：`ErrInvalidCredentials`、`ErrUserDisabled`、`ErrSessionInvalid`、`ErrWeakPassword`
   - 测试钩子：`func (s *Service) SetNowForTest(func() time.Time)`（仅测试使用，注释标明）
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 覆盖：
 
@@ -521,12 +521,12 @@ func TestChangePassword(t *testing.T)                 // 旧密码错误失败�
 
 测试辅助：`newTestStore(t)` 打开临时 SQLite 并迁移。
 
-- [ ] **Step 2: 运行确认失败**
+- [x] **Step 2: 运行确认失败**
 
 Run: `go test ./internal/auth/ -v`
 Expected: FAIL（undefined: NewService）
 
-- [ ] **Step 3: 实现**
+- [x] **Step 3: 实现**
 
 要点：
 
@@ -540,12 +540,12 @@ Expected: FAIL（undefined: NewService）
 - `ChangePassword`：校验旧密码 → `ValidatePassword` 新密码 → 更新 hash 与 `must_change_password=0`。
 - 所有时间通过 `s.now()` 获取，便于测试。
 
-- [ ] **Step 4: 运行测试确认通过**
+- [x] **Step 4: 运行测试确认通过**
 
 Run: `go test ./internal/auth/ -v`
 Expected: PASS
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add internal/auth
@@ -569,7 +569,7 @@ git commit -m "feat(auth): password, session and bootstrap admin"
   - `func (s *Service) List(ctx context.Context, f Filter) ([]Record, int64, error)`
   - `type Filter struct { ActorID string; Action string; FromTS, ToTS int64; Page, PageSize int }`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 ```go
 func TestWriteAndList(t *testing.T) {
@@ -580,21 +580,21 @@ func TestWriteRedactsNilSummary(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: 运行确认失败**
+- [x] **Step 2: 运行确认失败**
 
 Run: `go test ./internal/audit/ -v` → FAIL
 
-- [ ] **Step 3: 实现**
+- [x] **Step 3: 实现**
 
 - `Write`：ULID 主键，`ts=time.Now().UnixMilli()`，`json.Marshal(Summary)`（nil → `{}`），插入 `audit_logs`。
 - `List`：按 ts DESC 分页，返回总数；`Action` 精确匹配，`ActorID` 精确匹配，时间范围可选。
 - 不提供 Update/Delete 方法。
 
-- [ ] **Step 4: 运行测试确认通过**
+- [x] **Step 4: 运行测试确认通过**
 
 Run: `go test ./internal/audit/ -v` → PASS
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add internal/audit
@@ -627,7 +627,7 @@ git commit -m "feat(audit): append-only audit log service"
   - `func SecurityHeaders() gin.HandlerFunc`
   - 统一错误：`{"code":"...","message":"...","details":...}`
 
-- [ ] **Step 1: 写失败测试（httptest）**
+- [x] **Step 1: 写失败测试（httptest）**
 
 ```go
 func TestLoginSetsCookieAndAudits(t *testing.T)     // 200；Set-Cookie 含 spool_session；DB 有会话；审计有 login 成功
@@ -643,11 +643,11 @@ func TestChangePassword(t *testing.T)               // 旧密码错 → 400；�
 
 测试辅助：`newTestRouter(t)` 用临时 SQLite + 迁移 + `BootstrapAdmin`，返回 router 与初始密码。
 
-- [ ] **Step 2: 运行确认失败**
+- [x] **Step 2: 运行确认失败**
 
 Run: `go test ./internal/api/ -v` → FAIL
 
-- [ ] **Step 3: 实现**
+- [x] **Step 3: 实现**
 
 `response.go`：
 
@@ -702,11 +702,11 @@ func NewRouter(d Deps) *gin.Engine {
 
 注意：`ForcePasswordChange` 在 M0 只对后续业务路由组生效（M1 起），本任务通过单元测试验证其行为。
 
-- [ ] **Step 4: 运行测试确认通过**
+- [x] **Step 4: 运行测试确认通过**
 
 Run: `go test ./internal/api/ -v` → PASS
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add internal/api
@@ -744,7 +744,7 @@ git commit -m "feat(api): auth endpoints, middleware and audit integration"
   6. 装配 router；`http.Server` 监听配置地址；支持 TLS（cert/key 都非空）。
   7. `SIGINT/SIGTERM` 优雅停机，30s 超时；关闭 store；释放锁。
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 ```go
 func TestAcquireExcludesSecondHolder(t *testing.T) {
@@ -766,11 +766,11 @@ func TestReleaseAllowsReacquire(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: 运行确认失败**
+- [x] **Step 2: 运行确认失败**
 
 Run: `go test ./internal/lockfile/ -v` → FAIL
 
-- [ ] **Step 3: 实现锁**
+- [x] **Step 3: 实现锁**
 
 ```go
 package lockfile
@@ -799,7 +799,7 @@ func Acquire(path string) (func(), error) {
 
 （仅支持 linux/darwin，符合部署目标。）
 
-- [ ] **Step 4: 实现 main**
+- [x] **Step 4: 实现 main**
 
 要点：
 
@@ -858,7 +858,7 @@ func run() error {
 }
 ```
 
-- [ ] **Step 5: 构建并手工冒烟**
+- [x] **Step 5: 构建并手工冒烟**
 
 ```bash
 go build -o bin/spool ./cmd/spool
@@ -868,7 +868,7 @@ curl -s http://127.0.0.1:8080/api/v1/version
 
 Expected：打印初始密码；version 返回 JSON；再次启动第二个实例报"another spool instance is running"。
 
-- [ ] **Step 6: 提交**
+- [x] **Step 6: 提交**
 
 ```bash
 git add internal/lockfile cmd/spool
@@ -896,7 +896,7 @@ git commit -m "feat(cmd): wire config, store, auth, audit and single-instance lo
   - `useAuthStore`：`{ user, status, fetchMe, login, logout, changePassword }`。
 - 路由：`/login`、`/`（受保护布局）、`/password`（受保护）。
 
-- [ ] **Step 1: 初始化前端**
+- [x] **Step 1: 初始化前端**
 
 ```bash
 cd web
@@ -930,7 +930,7 @@ export default defineConfig({
 });
 ```
 
-- [ ] **Step 2: 写失败测试（client）**
+- [x] **Step 2: 写失败测试（client）**
 
 ```ts
 import { describe, expect, it } from "vitest";
@@ -960,7 +960,7 @@ describe("parseApiError", () => {
 
 Run: `npm test` → FAIL（模块不存在）
 
-- [ ] **Step 3: 实现 API client 与认证 store**
+- [x] **Step 3: 实现 API client 与认证 store**
 
 `client.ts` 要点：
 
@@ -995,7 +995,7 @@ export async function request<T>(method: string, path: string, body?: unknown): 
 
 `stores/auth.ts`：zustand store；`status: "loading" | "authed" | "anon"`；`fetchMe()` 调用 `GET /auth/me`，401 置 anon；`login(username,password)` 调 `POST /auth/login` 后写入 user；`logout()`；`changePassword(old,new)`。
 
-- [ ] **Step 4: 实现页面与路由**
+- [x] **Step 4: 实现页面与路由**
 
 - `main.tsx`：`ConfigProvider locale={zhCN}`、`QueryClientProvider`、`BrowserRouter`、`App`；`dayjs/locale/zh-cn`。
 - `App.tsx`：`/login` → Login；受保护 `ProtectedRoute` 内 `AppLayout`，子路由 `/` → Home、`/password` → Password。
@@ -1006,7 +1006,7 @@ export async function request<T>(method: string, path: string, body?: unknown): 
 - `Home.tsx`：`<Result status="info" title="Spool 已就绪" subTitle="主机、工具、流程将在后续里程碑上线" />`。
 - `Password.tsx`：旧密码/新密码/确认新密码；成功后提示并跳 `/`。
 
-- [ ] **Step 5: 运行测试与构建**
+- [x] **Step 5: 运行测试与构建**
 
 ```bash
 cd web && npm test && npm run build
@@ -1014,7 +1014,7 @@ cd web && npm test && npm run build
 
 Expected：2 个测试通过；`web/dist/index.html` 与 `assets/` 生成。
 
-- [ ] **Step 6: 实现嵌入**
+- [x] **Step 6: 实现嵌入**
 
 `internal/web/embed.go`：
 
@@ -1058,7 +1058,7 @@ func Handler() http.Handler {
 
 `api.Deps` 增加 `WebHandler http.Handler`，`router.go` 的 `NoRoute` 使用它；`main.go` 传入 `web.Handler()`。
 
-- [ ] **Step 7: 提交**
+- [x] **Step 7: 提交**
 
 ```bash
 git add web internal/web internal/api cmd/spool
@@ -1078,7 +1078,7 @@ git commit -m "feat(web): react shell with login, layout and embedded SPA"
 - Create: `README.md`
 - Create: `.github/workflows/ci.yml`
 
-- [ ] **Step 1: Makefile**
+- [x] **Step 1: Makefile**
 
 ```makefile
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
@@ -1111,7 +1111,7 @@ clean:
 	rm -rf bin internal/web/dist web/dist
 ```
 
-- [ ] **Step 2: 配置样例**
+- [x] **Step 2: 配置样例**
 
 `config.example.yaml`：
 
@@ -1134,7 +1134,7 @@ security:
   host_key_policy: tofu
 ```
 
-- [ ] **Step 3: systemd 单元**
+- [x] **Step 3: systemd 单元**
 
 ```ini
 [Unit]
@@ -1158,7 +1158,7 @@ PrivateTmp=true
 WantedBy=multi-user.target
 ```
 
-- [ ] **Step 4: CI**
+- [x] **Step 4: CI**
 
 ```yaml
 name: ci
@@ -1186,11 +1186,11 @@ jobs:
       - run: CGO_ENABLED=0 go build -o /tmp/spool ./cmd/spool
 ```
 
-- [ ] **Step 5: README**
+- [x] **Step 5: README**
 
 包含：项目简介、技术栈、本地开发（`make dev-api` + `make dev-web`，初始密码在服务端 stdout）、构建（`make build`）、部署（二进制 + config + systemd）、数据目录与备份说明（`spool.db` + 后续 `master.key`）、安全提示（首次登录改密）。
 
-- [ ] **Step 6: 全量验收**
+- [x] **Step 6: 全量验收**
 
 ```bash
 make test
@@ -1208,7 +1208,7 @@ SPOOL_DATA_DIR=/tmp/spool-m0 SPOOL_LISTEN=:18080 ./bin/spool -config config.exam
 6. 错误密码 5 次后提示锁定。
 7. 审计表出现 login/login_failed/password_change 记录。
 
-- [ ] **Step 7: 提交**
+- [x] **Step 7: 提交**
 
 ```bash
 git add Makefile config.example.yaml deploy README.md .github
