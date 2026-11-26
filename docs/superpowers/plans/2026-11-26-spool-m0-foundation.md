@@ -6,13 +6,13 @@
 
 **Architecture:** 模块化单体。Gin 提供 `/api/v1`，SQLite（modernc，无 CGO）经 sqlx + 内嵌 goose 迁移；认证用服务端会话表 + HttpOnly Cookie；前端 Vite/React 构建产物通过 `go:embed` 打入二进制并由 SPA fallback 提供。
 
-**Tech Stack:** Go 1.22、Gin、go-playground/validator、sqlx、goose、modernc.org/sqlite、oklog/ulid、bcrypt、log/slog；React 18、TypeScript、Vite、Ant Design 5、TanStack Query、Zustand、React Router。
+**Tech Stack:** Go 1.26、Gin、go-playground/validator、sqlx、goose、modernc.org/sqlite、oklog/ulid、bcrypt、log/slog；React 18、TypeScript、Vite、Ant Design 5、TanStack Query、Zustand、React Router。
 
 **Spec:** `docs/superpowers/specs/2026-11-26-spool-design.md`（本计划覆盖第 1、3、4、5、6、16、17、18、19、20、22 节中属于 M0 的部分；主机/凭据/工具/执行在后续里程碑计划中实现）
 
 ## Global Constraints
 
-- Go module：`github.com/Hopetree/spool`；Go 1.22。
+- Go module：`github.com/Hopetree/spool`；Go 1.26（go.mod 锁定）。
 - 禁止 CGO：SQLite 使用 `modernc.org/sqlite`（驱动名 `sqlite`），构建 `CGO_ENABLED=0`。
 - 主键统一 ULID（TEXT，26 字符）；时间统一 UTC 毫秒（INTEGER）。
 - 认证只使用服务端会话表 + HttpOnly Cookie；不使用 JWT。
@@ -1172,7 +1172,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.22"
+          go-version: "1.26"
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
