@@ -17,6 +17,7 @@ import (
 type toolRow struct {
 	ID               string `db:"id"`
 	Name             string `db:"name"`
+	Category         string `db:"category"`
 	Description      string `db:"description"`
 	Enabled          bool   `db:"enabled"`
 	CurrentVersionID string `db:"current_version_id"`
@@ -84,7 +85,7 @@ func NewService(db *sqlx.DB) *Service { return &Service{db: db, now: time.Now} }
 
 func (s *Service) nowMs() int64 { return s.now().UnixMilli() }
 
-const toolSelect = `SELECT t.id, t.name, t.description, t.enabled, t.current_version_id, t.created_at, t.updated_at,
+const toolSelect = `SELECT t.id, t.name, t.category, t.description, t.enabled, t.current_version_id, t.created_at, t.updated_at,
 	v.version_no, v.type, v.interpreter, v.params_json, v.default_timeout_sec, v.sudo, v.content_hash
 	FROM tools t JOIN tool_versions v ON v.id = t.current_version_id`
 
@@ -96,6 +97,7 @@ func (r toolRow) toTool() Tool {
 	return Tool{
 		ID:          r.ID,
 		Name:        r.Name,
+		Category:    r.Category,
 		Description: r.Description,
 		Enabled:     r.Enabled,
 		VersionNo:   r.VersionNo,
@@ -128,6 +130,12 @@ func (s *Service) List(ctx context.Context, f ListFilter) ([]Tool, int64, error)
 		where = append(where, "(t.name LIKE ? OR t.description LIKE ?)")
 		like := "%" + kw + "%"
 		args = append(args, like, like)
+	}
+	if f.Uncategorized {
+		where = append(where, "t.category = ''")
+	} else if f.Category != "" {
+		where = append(where, "(t.category = ? OR t.category LIKE ?)")
+		args = append(args, f.Category, f.Category+"/%")
 	}
 	if f.Enabled != nil {
 		where = append(where, "t.enabled = ?")
@@ -221,9 +229,9 @@ func (s *Service) Create(ctx context.Context, in Input, actorID string) (*Detail
 	}
 	defer func() { _ = tx.Rollback() }()
 	_, err = tx.ExecContext(ctx, `INSERT INTO tools
-		(id, name, description, enabled, current_version_id, created_by, created_at, updated_at)
-		VALUES (?, ?, ?, 1, '', ?, ?, ?)`,
-		id, in.Name, in.Description, actorID, now, now)
+		(id, name, category, description, enabled, current_version_id, created_by, created_at, updated_at)
+		VALUES (?, ?, ?, ?, 1, '', ?, ?, ?)`,
+		id, in.Name, in.Category, in.Description, actorID, now, now)
 	if err != nil {
 		if ue := uniqueNameError(err); ue != nil {
 			return nil, ue
@@ -273,8 +281,8 @@ func (s *Service) Update(ctx context.Context, id string, in Input, actorID strin
 	if err != nil {
 		return nil, err
 	}
-	_, err = tx.ExecContext(ctx, `UPDATE tools SET name = ?, description = ?, current_version_id = ?, updated_at = ? WHERE id = ?`,
-		in.Name, in.Description, versionID, s.nowMs(), id)
+	_, err = tx.ExecContext(ctx, `UPDATE tools SET name = ?, category = ?, description = ?, current_version_id = ?, updated_at = ? WHERE id = ?`,
+		in.Name, in.Category, in.Description, versionID, s.nowMs(), id)
 	if err != nil {
 		if ue := uniqueNameError(err); ue != nil {
 			return nil, ue
@@ -407,6 +415,7 @@ func (s *Service) Copy(ctx context.Context, toolID, actorID string) (*Detail, er
 	}
 	return s.Create(ctx, Input{
 		Name:           name,
+		Category:       src.Category,
 		Description:    src.Description,
 		Type:           src.Version.Type,
 		Interpreter:    src.Version.Interpreter,
@@ -417,4 +426,93 @@ func (s *Service) Copy(ctx context.Context, toolID, actorID string) (*Detail, er
 		Sudo:           src.Version.Sudo,
 		ChangeNote:     fmt.Sprintf("复制自 %s v%d", src.Name, src.Version.VersionNo),
 	}, actorID)
+}
+
+// Categories returns category paths with tool counts.
+func (s *Service) Categories(ctx context.Context) ([]CategoryCount, error) {
+	var rows []struct {
+		Category string `db:"category"`
+		Count    int    `db:"count"`
+	}
+	if err := s.db.SelectContext(ctx, &rows, `SELECT category, count(*) AS count FROM tools GROUP BY category ORDER BY category`); err != nil {
+		return nil, fmt.Errorf("list categories: %w", err)
+	}
+	out := make([]CategoryCount, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, CategoryCount{Path: r.Category, Count: r.Count})
+	}
+	return out, nil
+}
+
+// DeleteVersion removes a non-current version without execution history.
+func (s *Service) DeleteVersion(ctx context.Context, toolID string, versionNo int) error {
+	detail, err := s.Get(ctx, toolID)
+	if err != nil {
+		return err
+	}
+	v, err := s.Version(ctx, toolID, versionNo)
+	if err != nil {
+		return err
+	}
+	if v.ID == detail.Version.ID {
+		return ErrCurrentVersion
+	}
+	var n int
+	if err := s.db.GetContext(ctx, &n, `SELECT count(*) FROM step_runs WHERE tool_version_id = ?`, v.ID); err != nil {
+		return fmt.Errorf("check version history: %w", err)
+	}
+	if n > 0 {
+		return ErrVersionHasHistory
+	}
+	if _, err := s.db.ExecContext(ctx, `DELETE FROM tool_versions WHERE id = ?`, v.ID); err != nil {
+		return fmt.Errorf("delete version: %w", err)
+	}
+	return nil
+}
+
+// FlowRef is a flow step that references the tool.
+type FlowRef struct {
+	FlowID      string `db:"flow_id" json:"flow_id"`
+	FlowName    string `db:"flow_name" json:"flow_name"`
+	FlowEnabled bool   `db:"flow_enabled" json:"flow_enabled"`
+	StageName   string `db:"stage_name" json:"stage_name"`
+	StepName    string `db:"step_name" json:"step_name"`
+}
+
+// ScheduleRef is a schedule that references the tool.
+type ScheduleRef struct {
+	ID       string `db:"id" json:"id"`
+	Name     string `db:"name" json:"name"`
+	CronExpr string `db:"cron_expr" json:"cron_expr"`
+	Enabled  bool   `db:"enabled" json:"enabled"`
+}
+
+// References lists flows and schedules using the tool.
+type References struct {
+	Flows     []FlowRef     `json:"flows"`
+	Schedules []ScheduleRef `json:"schedules"`
+}
+
+// References returns objects that reference the tool.
+func (s *Service) References(ctx context.Context, toolID string) (*References, error) {
+	if _, err := s.Get(ctx, toolID); err != nil {
+		return nil, err
+	}
+	flows := []FlowRef{}
+	err := s.db.SelectContext(ctx, &flows, `SELECT f.id AS flow_id, f.name AS flow_name, f.enabled AS flow_enabled,
+		stg.name AS stage_name, st.name AS step_name
+		FROM flow_steps st
+		JOIN flow_stages stg ON stg.id = st.stage_id
+		JOIN flows f ON f.id = stg.flow_id
+		WHERE st.tool_id = ? ORDER BY f.name, stg.idx, st.idx`, toolID)
+	if err != nil {
+		return nil, fmt.Errorf("list flow refs: %w", err)
+	}
+	schedules := []ScheduleRef{}
+	err = s.db.SelectContext(ctx, &schedules, `SELECT id, name, cron_expr, enabled FROM schedules
+		WHERE target_kind = 'tool' AND target_ref_id = ? ORDER BY name`, toolID)
+	if err != nil {
+		return nil, fmt.Errorf("list schedule refs: %w", err)
+	}
+	return &References{Flows: flows, Schedules: schedules}, nil
 }

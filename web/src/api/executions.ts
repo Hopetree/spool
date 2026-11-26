@@ -100,6 +100,7 @@ export interface ExecutionFilters {
   status?: string;
   ref_id?: string;
   host_id?: string;
+  tool_id?: string;
   created_by?: string;
   keyword?: string;
   from?: number;

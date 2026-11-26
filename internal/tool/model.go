@@ -12,8 +12,10 @@ import (
 
 // Errors returned by the tool service.
 var (
-	ErrNotFound   = errors.New("tool not found")
-	ErrHasHistory = errors.New("tool is used by flows or execution history; disable it instead")
+	ErrNotFound          = errors.New("tool not found")
+	ErrHasHistory        = errors.New("tool is used by flows or execution history; disable it instead")
+	ErrCurrentVersion    = errors.New("cannot delete the current version")
+	ErrVersionHasHistory = errors.New("version has execution history")
 )
 
 // ValidationError marks invalid input.
@@ -41,6 +43,7 @@ type Param struct {
 type Tool struct {
 	ID          string  `json:"id"`
 	Name        string  `json:"name"`
+	Category    string  `json:"category"`
 	Description string  `json:"description"`
 	Enabled     bool    `json:"enabled"`
 	VersionNo   int     `json:"version_no"`
@@ -82,6 +85,7 @@ type Detail struct {
 // Input carries create/update fields.
 type Input struct {
 	Name           string
+	Category       string
 	Description    string
 	Type           string
 	Interpreter    string
@@ -95,10 +99,18 @@ type Input struct {
 
 // ListFilter narrows tool list queries.
 type ListFilter struct {
-	Keyword  string
-	Enabled  *bool
-	Page     int
-	PageSize int
+	Keyword       string
+	Category      string
+	Uncategorized bool
+	Enabled       *bool
+	Page          int
+	PageSize      int
+}
+
+// CategoryCount is one category path with its tool count.
+type CategoryCount struct {
+	Path  string `json:"path"`
+	Count int    `json:"count"`
 }
 
 // HashContent returns the sha256 hex digest of a script body.
@@ -199,8 +211,46 @@ func ValidateValues(params []Param, values map[string]string) (map[string]string
 	return out, nil
 }
 
+func normalizeCategory(raw string) (string, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return "", nil
+	}
+	parts := strings.Split(raw, "/")
+	if len(parts) > 5 {
+		return "", invalid("分类最多 5 层")
+	}
+	cleaned := make([]string, 0, len(parts))
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			return "", invalid("分类的每一层都不能为空")
+		}
+		if len(part) > 32 {
+			return "", invalid("分类每层不能超过 32 个字符")
+		}
+		if part == "." || part == ".." {
+			return "", invalid("分类不能包含 . 或 ..")
+		}
+		if strings.ContainsAny(part, "\t\r\n") {
+			return "", invalid("分类不能包含控制字符")
+		}
+		cleaned = append(cleaned, part)
+	}
+	out := strings.Join(cleaned, "/")
+	if len(out) > 128 {
+		return "", invalid("分类总长度不能超过 128 个字符")
+	}
+	return out, nil
+}
+
 func validateInput(in *Input) error {
 	in.Name = strings.TrimSpace(in.Name)
+	category, err := normalizeCategory(in.Category)
+	if err != nil {
+		return err
+	}
+	in.Category = category
 	if in.Name == "" {
 		return invalid("工具名称不能为空")
 	}

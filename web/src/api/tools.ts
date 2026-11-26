@@ -17,6 +17,7 @@ export interface ToolParam {
 export interface ToolSummary {
   id: string;
   name: string;
+  category: string;
   description: string;
   enabled: boolean;
   version_no: number;
@@ -54,6 +55,7 @@ export interface ToolDetail extends ToolSummary {
 
 export interface ToolInput {
   name: string;
+  category: string;
   description: string;
   type: ToolType;
   interpreter: string;
@@ -74,9 +76,36 @@ export interface ToolList {
 
 export interface ToolFilters {
   keyword?: string;
+  category?: string;
+  uncategorized?: boolean;
   enabled?: boolean;
   page?: number;
   page_size?: number;
+}
+
+export interface ToolCategory {
+  path: string;
+  count: number;
+}
+
+export interface ToolReferenceFlow {
+  flow_id: string;
+  flow_name: string;
+  flow_enabled: boolean;
+  stage_name: string;
+  step_name: string;
+}
+
+export interface ToolReferenceSchedule {
+  id: string;
+  name: string;
+  cron_expr: string;
+  enabled: boolean;
+}
+
+export interface ToolReferences {
+  flows: ToolReferenceFlow[];
+  schedules: ToolReferenceSchedule[];
 }
 
 function qs(params: object): string {
@@ -123,4 +152,17 @@ export async function listVersions(id: string): Promise<ToolVersion[]> {
 
 export function rollbackTool(id: string, versionNo: number, note = ""): Promise<ToolDetail> {
   return request<ToolDetail>("POST", `/tools/${id}/rollback`, { version_no: versionNo, note });
+}
+
+export function deleteToolVersion(id: string, versionNo: number): Promise<void> {
+  return request<void>("DELETE", `/tools/${id}/versions/${versionNo}`);
+}
+
+export async function listToolCategories(): Promise<ToolCategory[]> {
+  const res = await request<{ items: ToolCategory[] }>("GET", "/tool-categories");
+  return res.items;
+}
+
+export function getToolReferences(id: string): Promise<ToolReferences> {
+  return request<ToolReferences>("GET", `/tools/${id}/references`);
 }

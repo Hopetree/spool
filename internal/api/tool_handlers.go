@@ -13,6 +13,7 @@ import (
 
 type toolInput struct {
 	Name           string       `json:"name"`
+	Category       string       `json:"category"`
 	Description    string       `json:"description"`
 	Type           string       `json:"type"`
 	Interpreter    string       `json:"interpreter"`
@@ -27,6 +28,7 @@ type toolInput struct {
 func (in toolInput) toServiceInput() tool.Input {
 	return tool.Input{
 		Name:           in.Name,
+		Category:       in.Category,
 		Description:    in.Description,
 		Type:           in.Type,
 		Interpreter:    in.Interpreter,
@@ -48,6 +50,10 @@ func writeToolError(c *gin.Context, err error) {
 		fail(c, http.StatusNotFound, "not_found", "工具不存在", nil)
 	case errors.Is(err, tool.ErrHasHistory):
 		fail(c, http.StatusConflict, "tool_has_history", "工具已被流程或执行历史使用，只能停用", nil)
+	case errors.Is(err, tool.ErrCurrentVersion):
+		fail(c, http.StatusConflict, "current_version", "不能删除当前版本", nil)
+	case errors.Is(err, tool.ErrVersionHasHistory):
+		fail(c, http.StatusConflict, "version_has_history", "该版本已有执行历史，不能删除", nil)
 	default:
 		fail(c, http.StatusInternalServerError, "internal_error", "操作失败，请稍后重试", nil)
 	}
@@ -55,7 +61,10 @@ func writeToolError(c *gin.Context, err error) {
 
 func listToolsHandler(d Deps) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		f := tool.ListFilter{Keyword: c.Query("keyword")}
+		f := tool.ListFilter{Keyword: c.Query("keyword"), Category: c.Query("category")}
+		if c.Query("uncategorized") == "true" {
+			f.Uncategorized = true
+		}
 		f.Page, _ = strconv.Atoi(c.DefaultQuery("page", "1"))
 		f.PageSize, _ = strconv.Atoi(c.DefaultQuery("page_size", "20"))
 		if f.Page < 1 {
@@ -241,5 +250,48 @@ func copyToolHandler(d Deps) gin.HandlerFunc {
 			Summary: map[string]any{"source": c.Param("id")},
 		})
 		c.JSON(http.StatusCreated, detail)
+	}
+}
+
+func toolCategoriesHandler(d Deps) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		items, err := d.Tools.Categories(c.Request.Context())
+		if err != nil {
+			writeToolError(c, err)
+			return
+		}
+		ok(c, gin.H{"items": items})
+	}
+}
+
+func deleteToolVersionHandler(d Deps) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		no, err := strconv.Atoi(c.Param("no"))
+		if err != nil || no <= 0 {
+			fail(c, http.StatusBadRequest, "validation_failed", "版本号不正确", nil)
+			return
+		}
+		u := currentUser(c)
+		if err := d.Tools.DeleteVersion(c.Request.Context(), c.Param("id"), no); err != nil {
+			writeToolError(c, err)
+			return
+		}
+		writeAudit(c, d, audit.Entry{
+			ActorID: u.ID, ActorName: u.Username, Action: "tool.version_delete",
+			ResourceType: "tool", ResourceID: c.Param("id"),
+			Summary: map[string]any{"version": no},
+		})
+		c.Status(http.StatusNoContent)
+	}
+}
+
+func toolReferencesHandler(d Deps) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		refs, err := d.Tools.References(c.Request.Context(), c.Param("id"))
+		if err != nil {
+			writeToolError(c, err)
+			return
+		}
+		ok(c, refs)
 	}
 }

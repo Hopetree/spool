@@ -98,6 +98,10 @@ func listExecutionsHandler(d Deps) gin.HandlerFunc {
 			where = append(where, "EXISTS (SELECT 1 FROM host_runs h WHERE h.execution_id = e.id AND h.host_id = ?)")
 			args = append(args, v)
 		}
+		if v := c.Query("tool_id"); v != "" {
+			where = append(where, "EXISTS (SELECT 1 FROM step_runs s JOIN host_runs h ON h.id = s.host_run_id WHERE h.execution_id = e.id AND s.tool_id = ?)")
+			args = append(args, v)
+		}
 		if v := c.Query("from"); v != "" {
 			if ms, err := strconv.ParseInt(v, 10, 64); err == nil {
 				where = append(where, "e.created_at >= ?")
