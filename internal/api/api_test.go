@@ -15,6 +15,7 @@ import (
 	"github.com/Hopetree/spool/internal/audit"
 	"github.com/Hopetree/spool/internal/auth"
 	"github.com/Hopetree/spool/internal/config"
+	"github.com/Hopetree/spool/internal/credential"
 	"github.com/Hopetree/spool/internal/store"
 )
 
@@ -41,12 +42,24 @@ func newTestEnv(t *testing.T) *testEnv {
 	if err != nil {
 		t.Fatalf("bootstrap: %v", err)
 	}
-	return &testEnv{
-		router:   NewRouter(Deps{Cfg: &cfg, Store: st, Auth: authSvc, Audit: audit.NewService(st.DB), Version: "test"}),
+	cipher, err := credential.NewCipher(bytes.Repeat([]byte{1}, 32))
+	if err != nil {
+		t.Fatalf("cipher: %v", err)
+	}
+	env := &testEnv{
+		router: NewRouter(Deps{
+			Cfg:         &cfg,
+			Store:       st,
+			Auth:        authSvc,
+			Audit:       audit.NewService(st.DB),
+			Credentials: credential.NewService(st.DB, cipher),
+			Version:     "test",
+		}),
 		store:    st,
 		auth:     authSvc,
 		password: pw,
 	}
+	return env
 }
 
 func (e *testEnv) do(t *testing.T, method, path string, body any, cookies ...*http.Cookie) *httptest.ResponseRecorder {
