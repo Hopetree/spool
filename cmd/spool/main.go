@@ -18,10 +18,12 @@ import (
 	"github.com/Hopetree/spool/internal/auth"
 	"github.com/Hopetree/spool/internal/config"
 	"github.com/Hopetree/spool/internal/credential"
+	"github.com/Hopetree/spool/internal/exec"
 	"github.com/Hopetree/spool/internal/host"
 	"github.com/Hopetree/spool/internal/lockfile"
 	"github.com/Hopetree/spool/internal/sshx"
 	"github.com/Hopetree/spool/internal/store"
+	"github.com/Hopetree/spool/internal/tool"
 	"github.com/Hopetree/spool/internal/web"
 )
 
@@ -81,6 +83,19 @@ func run() error {
 	}
 	credSvc := credential.NewService(st.DB, cipher)
 	hostSvc := host.NewService(st.DB, credSvc, sshx.NewProber(), cfg.Security.HostKeyPolicy)
+	toolSvc := tool.NewService(st.DB)
+	engine := exec.New(st.DB, credSvc, exec.NewSSHFactory(credSvc, cfg.Security.HostKeyPolicy), exec.Config{
+		MaxConcurrentSteps:    cfg.Execution.MaxConcurrentSteps,
+		MaxConcurrentHostRuns: cfg.Execution.MaxConcurrentHostRuns,
+		DefaultStepTimeoutSec: cfg.Execution.DefaultStepTimeoutSec,
+		OutputLimitBytes:      int64(cfg.Execution.StepOutputLimitMB) * 1024 * 1024,
+		RemoteBaseDir:         cfg.Execution.RemoteBaseDir,
+		LogsDir:               filepath.Join(cfg.DataDir, "logs"),
+	})
+	if err := engine.Start(context.Background()); err != nil {
+		return err
+	}
+	defer engine.Stop()
 
 	initialPassword, created, err := authSvc.BootstrapAdmin(context.Background())
 	if err != nil {
@@ -97,6 +112,8 @@ func run() error {
 		Audit:       auditSvc,
 		Credentials: credSvc,
 		Hosts:       hostSvc,
+		Tools:       toolSvc,
+		Engine:      engine,
 		Version:     version,
 		StartedAt:   time.Now(),
 		WebHandler:  web.Handler(),
