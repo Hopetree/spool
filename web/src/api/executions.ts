@@ -28,6 +28,7 @@ export interface Execution {
   created_by: string;
   created_by_name?: string;
   command?: string;
+  tool_version_no?: number;
   created_at: number;
   started_at: number | null;
   finished_at: number | null;

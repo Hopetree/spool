@@ -10,7 +10,7 @@ export default function ScheduleExecutions() {
         subtitle="包含定时触发和从定时任务手动触发的执行记录"
       />
       <Card>
-        <ExecutionTable scheduledOnly showSchedule showKind showFilters />
+        <ExecutionTable scheduledOnly showSchedule showKind showVersion showFilters />
       </Card>
     </div>
   );

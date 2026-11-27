@@ -14,7 +14,7 @@ import {
   Typography,
 } from "antd";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import dayjs from "dayjs";
 import {
   cancelExecution,
@@ -240,21 +240,43 @@ export default function ExecutionDetail() {
             column={3}
             size="small"
             items={[
-              { key: "operator", label: "操作人", children: data.created_by_name || data.created_by || "—" },
+              {
+                key: "object",
+                label: data.kind === "tool" ? "工具名称" : data.kind === "flow" ? "流程名称" : "执行对象",
+                children:
+                  data.kind === "tool" && toolDetailPath ? (
+                    <Link to={toolDetailPath}>{data.name}</Link>
+                  ) : (
+                    data.name
+                  ),
+              },
+              ...(data.kind === "tool"
+                ? [
+                    {
+                      key: "version",
+                      label: "工具版本",
+                      children: data.tool_version_no ? `v${data.tool_version_no}` : "—",
+                    },
+                  ]
+                : []),
+              { key: "operator", label: "创建用户", children: data.created_by_name || data.created_by || "—" },
+              { key: "created", label: "创建时间", children: dayjs(data.created_at).format("YYYY-MM-DD HH:mm:ss") },
+              {
+                key: "started",
+                label: "开始时间",
+                children: data.started_at ? dayjs(data.started_at).format("YYYY-MM-DD HH:mm:ss") : "—",
+              },
+              { key: "duration", label: "耗时", children: duration(data.started_at, data.finished_at) },
               {
                 key: "source",
                 label: "来源",
                 children: data.source === "manual" ? "手动" : data.source === "schedule" ? "定时任务" : data.source,
               },
-              { key: "created", label: "创建时间", children: dayjs(data.created_at).format("YYYY-MM-DD HH:mm:ss") },
-              { key: "started", label: "开始时间", children: data.started_at ? dayjs(data.started_at).format("HH:mm:ss") : "—" },
-              { key: "duration", label: "耗时", children: duration(data.started_at, data.finished_at) },
               {
                 key: "hosts",
-                label: "主机统计",
+                label: "执行目标",
                 children: `成功 ${data.host_success} / 失败 ${data.host_failed} / 取消 ${data.host_cancelled} / 共 ${data.host_total}`,
               },
-              { key: "summary", label: "摘要", children: data.error_summary || "—" },
               {
                 key: "params",
                 label: "参数",
@@ -271,6 +293,7 @@ export default function ExecutionDetail() {
                     "—"
                   ),
               },
+              { key: "summary", label: "摘要", children: data.error_summary || "—", span: 3 },
             ]}
           />
         )}

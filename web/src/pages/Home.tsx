@@ -279,7 +279,7 @@ export default function Home() {
       </Card>
 
       <Card style={{ marginTop: 16 }} title="执行历史">
-        <ExecutionTable pageSize={10} showKind showFilters showKindFilter serverPagination />
+        <ExecutionTable pageSize={10} showKind showVersion showFilters showKindFilter serverPagination />
       </Card>
     </div>
   );

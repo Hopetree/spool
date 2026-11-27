@@ -28,18 +28,20 @@ type runInput struct {
 
 type executionDTO struct {
 	exec.Execution
-	Params   map[string]string `json:"params"`
-	Command  string            `json:"command,omitempty"`
-	HostRuns []exec.HostRun    `json:"host_runs,omitempty"`
-	StepRuns []exec.StepRun    `json:"step_runs,omitempty"`
-	Graph    *executionGraph   `json:"graph,omitempty"`
+	Params        map[string]string `json:"params"`
+	Command       string            `json:"command,omitempty"`
+	ToolVersionNo int               `json:"tool_version_no,omitempty"`
+	HostRuns      []exec.HostRun    `json:"host_runs,omitempty"`
+	StepRuns      []exec.StepRun    `json:"step_runs,omitempty"`
+	Graph         *executionGraph   `json:"graph,omitempty"`
 }
 
 // executionListDTO is the row shape for execution listings. Ad-hoc runs
 // expose their command snippet so history panels do not just repeat "临时命令".
 type executionListDTO struct {
 	exec.Execution
-	Command string `json:"command,omitempty"`
+	Command       string `json:"command,omitempty"`
+	ToolVersionNo int    `json:"tool_version_no,omitempty"`
 }
 
 type executionGraph struct {
@@ -91,6 +93,31 @@ func executionGraphOf(planJSON string) *executionGraph {
 		})
 	}
 	return out
+}
+
+func executionToolVersion(planJSON, kind string) int {
+	if kind != "tool" || planJSON == "" {
+		return 0
+	}
+	var plan exec.Plan
+	if err := json.Unmarshal([]byte(planJSON), &plan); err != nil {
+		return 0
+	}
+	for _, stage := range plan.Stages {
+		for _, step := range stage.Steps {
+			if step.ToolVersionNo > 0 {
+				return step.ToolVersionNo
+			}
+		}
+	}
+	if plan.Graph != nil {
+		for _, node := range plan.Graph.Nodes {
+			if node.Type == "tool" && node.ToolVersionNo > 0 {
+				return node.ToolVersionNo
+			}
+		}
+	}
+	return 0
 }
 
 func splitSensitive(params []tool.Param, values map[string]string) (plain, sensitive map[string]string) {
@@ -211,7 +238,7 @@ func listExecutionsHandler(d Deps) gin.HandlerFunc {
 		}
 		items := make([]executionListDTO, 0, len(rows))
 		for _, row := range rows {
-			item := executionListDTO{Execution: row}
+			item := executionListDTO{Execution: row, ToolVersionNo: executionToolVersion(row.PlanJSON, row.Kind)}
 			if row.Kind == "adhoc" {
 				params := map[string]string{}
 				_ = json.Unmarshal([]byte(row.ParamsJSON), &params)
@@ -244,8 +271,17 @@ func getExecutionHandler(d Deps) gin.HandlerFunc {
 			command = params["command"]
 			delete(params, "command")
 		}
+		toolVersionNo := executionToolVersion(ex.PlanJSON, ex.Kind)
+		if toolVersionNo == 0 && ex.Kind == "tool" {
+			for _, step := range steps {
+				if step.ToolVersionNo > 0 {
+					toolVersionNo = step.ToolVersionNo
+					break
+				}
+			}
+		}
 		ok(c, executionDTO{
-			Execution: *ex, Params: params, Command: command,
+			Execution: *ex, Params: params, Command: command, ToolVersionNo: toolVersionNo,
 			HostRuns: hostRuns, StepRuns: steps, Graph: executionGraphOf(ex.PlanJSON),
 		})
 	}

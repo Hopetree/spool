@@ -16,6 +16,7 @@ interface Props {
   showFilters?: boolean;
   showKind?: boolean;
   showKindFilter?: boolean;
+  showVersion?: boolean;
   serverPagination?: boolean;
   pageSize?: number;
 }
@@ -54,10 +55,12 @@ export default function ExecutionTable({
   showFilters,
   showKind,
   showKindFilter,
+  showVersion,
   serverPagination,
   pageSize = 20,
 }: Props) {
   const navigate = useNavigate();
+  const withVersion = showVersion ?? kind === "tool";
   const [status, setStatus] = useState<string>();
   const [kindFilter, setKindFilter] = useState<string>();
   const [keyword, setKeyword] = useState("");
@@ -221,6 +224,16 @@ export default function ExecutionTable({
                   dataIndex: "kind",
                   width: 80,
                   render: (v: string) => kindLabels[v] ?? v,
+                },
+              ]
+            : []),
+          ...(withVersion
+            ? [
+                {
+                  title: "版本",
+                  dataIndex: "tool_version_no",
+                  width: 70,
+                  render: (v?: number) => (v ? `v${v}` : "—"),
                 },
               ]
             : []),

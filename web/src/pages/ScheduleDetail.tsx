@@ -224,7 +224,7 @@ export default function ScheduleDetail() {
       </Card>
 
       <Card title="执行历史">
-        {id && <ExecutionTable scheduleID={id} showFilters />}
+        {id && <ExecutionTable scheduleID={id} showKind showVersion showFilters />}
       </Card>
     </div>
   );

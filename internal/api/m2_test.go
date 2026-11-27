@@ -230,6 +230,23 @@ func TestExecuteToolAndHistory(t *testing.T) {
 	if step["status"] != "success" {
 		t.Fatalf("step = %+v", step)
 	}
+	if detail["tool_version_no"] != float64(1) {
+		t.Fatalf("tool_version_no = %v", detail["tool_version_no"])
+	}
+
+	w = e.do(t, http.MethodGet, "/api/v1/executions?kind=tool&page=1&page_size=10", nil, operator)
+	if w.Code != http.StatusOK {
+		t.Fatalf("list status = %d", w.Code)
+	}
+	var page struct {
+		Items []map[string]any `json:"items"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &page); err != nil {
+		t.Fatal(err)
+	}
+	if len(page.Items) == 0 || page.Items[0]["tool_version_no"] != float64(1) {
+		t.Fatalf("execution list = %+v", page.Items)
+	}
 
 	w = e.do(t, http.MethodGet, "/api/v1/executions/"+execID+"/events", nil, operator)
 	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "hello") {
