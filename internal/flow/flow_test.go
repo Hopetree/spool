@@ -178,7 +178,7 @@ func TestCompileBuildsGraph(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	res, err := svc.Compile(ctx, created.ID, map[string]string{"SECRET": "s3cr3t"})
+	res, err := svc.Compile(ctx, created.ID, map[string]string{"ENV": "prod", "SECRET": "s3cr3t"})
 	if err != nil {
 		t.Fatalf("compile: %v", err)
 	}

@@ -271,14 +271,14 @@ func TestLegacyFlowMappingConversionAndFiltering(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create legacy: %v", err)
 	}
-	if len(created.Params) != 1 || created.Params[0].Name != "ENV" {
+	if len(created.Params) != 1 || created.Params[0].Name != "ENV" || created.Params[0].Default != "" {
 		t.Fatalf("params = %+v", created.Params)
 	}
 	m := created.Nodes[1].Mapping["ENV"]
 	if m.Source != "input" || m.InputName != "ENV" || m.InputLabel != "环境" {
 		t.Fatalf("mapping = %+v", m)
 	}
-	res, err := svc.Compile(ctx, created.ID, map[string]string{"UNUSED": "ignored"})
+	res, err := svc.Compile(ctx, created.ID, map[string]string{"ENV": "prod", "UNUSED": "ignored"})
 	if err != nil {
 		t.Fatalf("compile legacy: %v", err)
 	}
@@ -374,5 +374,35 @@ func TestCompileToleratesLegacySharedInputNames(t *testing.T) {
 	}
 	if len(inputs) != 1 || inputs[0].Name != "shared" {
 		t.Fatalf("inputs = %+v", inputs)
+	}
+}
+
+func TestExecutionInputDoesNotInheritToolDefault(t *testing.T) {
+	svc, tools, _ := newFlowFixture(t)
+	ctx := context.Background()
+	a := createTool(t, tools, "a", []tool.Param{{Name: "service", Type: "string", Default: "spool"}})
+	in := Input{
+		Name: "blank-input", MaxDurationSec: 600,
+		Nodes: []NodeInput{
+			{ID: "start", Type: NodeStart, Name: "开始"},
+			{ID: "a", Type: NodeTool, Name: "A", ToolID: a.ID, Mapping: map[string]Mapping{
+				"service": {Source: "input", InputName: "service", InputLabel: "服务名"},
+			}},
+		},
+		Edges: []EdgeInput{{From: "start", To: "a", Condition: CondAlways}},
+	}
+	created, err := svc.Create(ctx, in, "admin")
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if len(created.Params) != 1 || created.Params[0].Default != "" {
+		t.Fatalf("params = %+v", created.Params)
+	}
+	res, err := svc.Compile(ctx, created.ID, nil)
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	if got := res.Plan.Graph.Nodes[1].Params["service"]; got != "" {
+		t.Fatalf("execution input fell back to tool default: %q", got)
 	}
 }

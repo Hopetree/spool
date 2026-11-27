@@ -520,12 +520,20 @@ func (s *Service) Compile(ctx context.Context, id string, values map[string]stri
 			value := res.Value
 			if res.Kind == "input" {
 				value = flowValues[res.InputName]
+				if value == "" {
+					if p.Required {
+						return nil, invalid(fmt.Sprintf("节点 %q 的参数 %q 不能为空", node.Name, p.Name))
+					}
+				} else if err := tool.ValidateValue(p, value); err != nil {
+					return nil, invalid(fmt.Sprintf("节点 %q 的参数校验失败：%s", node.Name, err.Error()))
+				}
+			} else {
+				validated, err := tool.ValidateValues([]tool.Param{p}, map[string]string{p.Name: value})
+				if err != nil {
+					return nil, invalid(fmt.Sprintf("节点 %q 的参数校验失败：%s", node.Name, err.Error()))
+				}
+				value = validated[p.Name]
 			}
-			validated, err := tool.ValidateValues([]tool.Param{p}, map[string]string{p.Name: value})
-			if err != nil {
-				return nil, invalid(fmt.Sprintf("节点 %q 的参数校验失败：%s", node.Name, err.Error()))
-			}
-			value = validated[p.Name]
 			secret := res.Sensitive
 			if res.Kind == "input" && inputSensitive[res.InputName] {
 				secret = true

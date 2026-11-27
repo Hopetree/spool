@@ -187,6 +187,13 @@ func validateValue(p Param, value string) error {
 	return nil
 }
 
+// ValidateValue checks one value against a parameter's type and options. It
+// does not apply the parameter default; callers use this when the value comes
+// from an execution input and must remain empty when not supplied.
+func ValidateValue(p Param, value string) error {
+	return validateValue(p, value)
+}
+
 // ValidateValues applies defaults, rejects unknown keys and returns the final
 // values that will be injected as environment variables.
 func ValidateValues(params []Param, values map[string]string) (map[string]string, error) {

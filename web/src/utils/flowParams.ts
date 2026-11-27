@@ -246,7 +246,6 @@ export function deriveInputs(
       labels: string[];
       params: ToolParam[];
       descriptions: string[];
-      defaults: string[];
       required: boolean;
       sensitive: boolean;
       usedBy: string[];
@@ -262,7 +261,6 @@ export function deriveInputs(
         labels: [],
         params: [],
         descriptions: [],
-        defaults: [],
         required: false,
         sensitive: false,
         usedBy: [],
@@ -271,7 +269,6 @@ export function deriveInputs(
       if (res.rootParam?.label) acc.labels.push(res.rootParam.label);
       if (res.rootParam) acc.params.push(res.rootParam);
       if (res.rootParam?.description) acc.descriptions.push(res.rootParam.description);
-      if (res.rootParam?.default) acc.defaults.push(res.rootParam.default);
       acc.required = acc.required || res.required;
       acc.sensitive = acc.sensitive || res.sensitive;
       if (!acc.usedBy.includes(node.name)) acc.usedBy.push(node.name);
@@ -281,14 +278,13 @@ export function deriveInputs(
 
   return Array.from(accs.entries()).map(([name, acc]) => {
     const base = acc.params[0];
-    const uniqueDefaults = Array.from(new Set(acc.defaults.filter(Boolean)));
     return {
       name,
       label: firstNonEmpty(...acc.labels, base?.label ?? "", name),
       type: base?.type ?? "string",
       required: acc.required,
       sensitive: acc.sensitive,
-      default: uniqueDefaults.length === 1 ? uniqueDefaults[0] : "",
+      default: "",
       options: intersectOptions(base?.type ?? "string", acc.params),
       description: firstNonEmpty(...acc.descriptions, base?.description ?? ""),
       usedBy: acc.usedBy,

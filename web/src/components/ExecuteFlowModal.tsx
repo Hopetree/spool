@@ -71,13 +71,8 @@ export default function ExecuteFlowModal({ flowID, open, onClose }: Props) {
 
   useEffect(() => {
     if (!open) return;
-    const defaults: Record<string, string> = {};
-    flow?.params.forEach((p) => {
-      if (p.default) defaults[p.name] = p.default;
-    });
     form.resetFields();
-    form.setFieldsValue({ params: defaults });
-  }, [open, flow, form]);
+  }, [open, form]);
 
   const toolNodes = (flow?.nodes ?? []).filter((node) => node.type === "tool");
   const allNodesConfigured = toolNodes.length > 0 && toolNodes.every((node) => (node.host_ids ?? []).length > 0);

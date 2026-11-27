@@ -221,7 +221,6 @@ func deriveInputs(r *paramResolver, enforceUnique bool) ([]tool.Param, error) {
 		params       []tool.Param
 		labels       []string
 		descriptions []string
-		defaults     []string
 		required     bool
 		sensitive    bool
 	}
@@ -277,9 +276,6 @@ func deriveInputs(r *paramResolver, enforceUnique bool) ([]tool.Param, error) {
 			if desc := strings.TrimSpace(res.RootParam.Description); desc != "" {
 				acc.descriptions = append(acc.descriptions, desc)
 			}
-			if def := strings.TrimSpace(res.RootParam.Default); def != "" {
-				acc.defaults = append(acc.defaults, def)
-			}
 			acc.required = acc.required || res.Required
 			acc.sensitive = acc.sensitive || res.Sensitive
 		}
@@ -303,7 +299,9 @@ func deriveInputs(r *paramResolver, enforceUnique bool) ([]tool.Param, error) {
 		if base.Type == "select" && len(base.Options) == 0 {
 			return nil, invalid(fmt.Sprintf("流程输入 %q 的候选项没有交集", name))
 		}
-		base.Default = chooseDefault(base, acc.defaults)
+		// Execution inputs never auto-fill the tool default; choosing an input
+		// means the value must be supplied at execution time.
+		base.Default = ""
 		out = append(out, base)
 	}
 	if err := tool.ValidateParams(out); err != nil {
@@ -345,26 +343,6 @@ func intersectOptions(paramType string, params []tool.Param) []string {
 		}
 	}
 	return out
-}
-
-func chooseDefault(p tool.Param, defaults []string) string {
-	unique := []string{}
-	seen := map[string]bool{}
-	for _, def := range defaults {
-		if def == "" || seen[def] {
-			continue
-		}
-		seen[def] = true
-		unique = append(unique, def)
-	}
-	if len(unique) != 1 {
-		return ""
-	}
-	candidate := unique[0]
-	if _, err := tool.ValidateValues([]tool.Param{p}, map[string]string{p.Name: candidate}); err != nil {
-		return ""
-	}
-	return candidate
 }
 
 func topologicalOrder(nodes []NodeInput, edges []EdgeInput) ([]string, error) {

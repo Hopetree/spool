@@ -52,12 +52,17 @@ func TestFlowParameterSourcesApi(t *testing.T) {
 		t.Fatalf("params = %+v", created["params"])
 	}
 	labels := map[string]string{}
+	defaults := map[string]string{}
 	for _, raw := range params {
 		p := raw.(map[string]any)
 		labels[p["name"].(string)] = p["label"].(string)
+		defaults[p["name"].(string)] = p["default"].(string)
 	}
 	if labels["ENV"] != "环境" || labels["SECRET"] != "访问令牌" {
 		t.Fatalf("labels = %+v", labels)
+	}
+	if defaults["ENV"] != "" {
+		t.Fatalf("execution input inherited tool default: %+v", defaults)
 	}
 	nodes, _ := created["nodes"].([]any)
 	for _, raw := range nodes {

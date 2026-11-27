@@ -117,7 +117,7 @@ func TestExecuteFlowAndRerun(t *testing.T) {
 	operator := ensureOperator(t, e)
 
 	w := e.do(t, http.MethodPost, "/api/v1/executions", map[string]any{
-		"kind": "flow", "ref_id": flow["id"], "params": map[string]string{"SECRET": "s3cr3t"},
+		"kind": "flow", "ref_id": flow["id"], "params": map[string]string{"ENV": "prod", "SECRET": "s3cr3t"},
 		"host_ids": []string{host["id"].(string)},
 	}, operator)
 	if w.Code != http.StatusCreated {
