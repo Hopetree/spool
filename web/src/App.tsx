@@ -23,6 +23,7 @@ import Schedules from "./pages/Schedules";
 import ToolDetail from "./pages/ToolDetail";
 import ToolEditor from "./pages/ToolEditor";
 import ToolExecutions from "./pages/ToolExecutions";
+import ToolVersionCompare from "./pages/ToolVersionCompare";
 import Tools from "./pages/Tools";
 import Users from "./pages/Users";
 
@@ -40,6 +41,7 @@ export default function App() {
           <Route path="tools/executions" element={<ToolExecutions />} />
           <Route path="tools/new" element={<ToolEditor />} />
           <Route path="tools/:id/edit" element={<ToolEditor />} />
+          <Route path="tools/:id/versions/compare" element={<ToolVersionCompare />} />
           <Route path="tools/:id" element={<ToolDetail />} />
           <Route path="flows" element={<Flows />} />
           <Route path="flows/executions" element={<FlowExecutions />} />

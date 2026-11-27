@@ -1,13 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   App as AntApp,
   Button,
   Card,
   Descriptions,
   Dropdown,
-  Modal,
   Popconfirm,
-  Select,
   Space,
   Table,
   Tabs,
@@ -18,7 +16,6 @@ import { DownOutlined } from "@ant-design/icons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams } from "react-router-dom";
 import dayjs from "dayjs";
-import { diffLines } from "diff";
 import { ApiError } from "../api/client";
 import {
   copyTool,
@@ -51,9 +48,6 @@ export default function ToolDetail() {
   const canRun = isAdmin || user?.role === "operator";
 
   const [execOpen, setExecOpen] = useState(false);
-  const [diffOpen, setDiffOpen] = useState(false);
-  const [fromNo, setFromNo] = useState<number>();
-  const [toNo, setToNo] = useState<number>();
 
   const { data: detail, isLoading } = useQuery({
     queryKey: ["tool", id],
@@ -132,24 +126,6 @@ export default function ToolDetail() {
     onError: (err) => message.error(err instanceof ApiError ? err.message : "更新失败"),
   });
 
-  const fromV = versions.find((v) => v.version_no === fromNo);
-  const toV = versions.find((v) => v.version_no === toNo);
-  const diffParts = useMemo(() => (fromV && toV ? diffLines(fromV.content, toV.content) : []), [fromV, toV]);
-
-  const openDiff = (a?: number, b?: number) => {
-    if (a && b) {
-      setFromNo(a);
-      setToNo(b);
-    } else if (versions.length >= 2) {
-      setFromNo(versions[1].version_no);
-      setToNo(versions[0].version_no);
-    } else if (versions.length === 1) {
-      setFromNo(versions[0].version_no);
-      setToNo(versions[0].version_no);
-    }
-    setDiffOpen(true);
-  };
-
   const versionsTab = (
     <Table<ToolVersion>
       rowKey="id"
@@ -184,7 +160,11 @@ export default function ToolDetail() {
           width: 240,
           render: (_, r) => (
             <Space>
-              <Button size="small" onClick={() => openDiff(r.version_no === 1 ? 1 : r.version_no - 1, r.version_no)}>
+              <Button
+                size="small"
+                disabled={r.version_no === 1}
+                onClick={() => navigate(`/tools/${id}/versions/compare?from=${r.version_no - 1}&to=${r.version_no}`)}
+              >
                 对比
               </Button>
               {isAdmin && (
@@ -402,56 +382,6 @@ export default function ToolDetail() {
           { key: "references", label: "引用对象", children: referencesTab },
         ]}
       />
-
-      <Modal open={diffOpen} onCancel={() => setDiffOpen(false)} footer={null} width={900} title="版本对比">
-        <Space style={{ marginBottom: 12 }}>
-          <Select
-            style={{ width: 160 }}
-            placeholder="基准版本"
-            value={fromNo}
-            onChange={setFromNo}
-            options={versions.map((v) => ({ value: v.version_no, label: `v${v.version_no}` }))}
-          />
-          <span>→</span>
-          <Select
-            style={{ width: 160 }}
-            placeholder="目标版本"
-            value={toNo}
-            onChange={setToNo}
-            options={versions.map((v) => ({ value: v.version_no, label: `v${v.version_no}` }))}
-          />
-        </Space>
-        <div
-          style={{
-            maxHeight: 520,
-            overflow: "auto",
-            fontFamily: "Menlo, Consolas, monospace",
-            fontSize: 12,
-            whiteSpace: "pre-wrap",
-          }}
-        >
-          {diffParts.length === 0 ? (
-            <Typography.Text type="secondary">请选择两个版本</Typography.Text>
-          ) : (
-            diffParts.map((part, idx) => (
-              <div
-                key={idx}
-                style={{
-                  background: part.added ? "#e6ffec" : part.removed ? "#ffebe9" : undefined,
-                  color: part.added ? "#116329" : part.removed ? "#a40e26" : undefined,
-                  padding: "2px 6px",
-                }}
-              >
-                {part.value
-                  .split("\n")
-                  .filter((line, i, arr) => !(i === arr.length - 1 && line === ""))
-                  .map((line) => `${part.added ? "+" : part.removed ? "-" : " "}${line}`)
-                  .join("\n")}
-              </div>
-            ))
-          )}
-        </div>
-      </Modal>
 
       <ExecuteToolModal toolID={id ?? null} open={execOpen} onClose={() => setExecOpen(false)} />
     </div>
