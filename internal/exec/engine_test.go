@@ -131,11 +131,12 @@ func (f *fakeFactory) Connect(ctx context.Context, h HostRef) (Runner, error) {
 }
 
 type engineFixture struct {
-	engine *Engine
-	store  *store.Store
-	creds  *credential.Service
-	hostID string
-	logs   string
+	engine  *Engine
+	store   *store.Store
+	creds   *credential.Service
+	hostID  string
+	hostID2 string
+	logs    string
 }
 
 func newEngineFixture(t *testing.T, cfg Config, runner Runner) *engineFixture {
@@ -160,9 +161,15 @@ func newEngineFixture(t *testing.T, cfg Config, runner Runner) *engineFixture {
 		t.Fatal(err)
 	}
 	hostID := store.NewULID()
+	hostID2 := store.NewULID()
 	capJSON := `{"bash_path":"/bin/bash","python_path":"/usr/bin/python3","setsid":false,"timeout":false,"probed_at":1}`
 	_, err = st.DB.Exec(`INSERT INTO hosts (id, name, address, port, credential_id, enabled, capability_json, created_at, updated_at)
 		VALUES (?, 'h1', '127.0.0.1', 22, ?, 1, ?, 1, 1)`, hostID, cred.ID, capJSON)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = st.DB.Exec(`INSERT INTO hosts (id, name, address, port, credential_id, enabled, capability_json, created_at, updated_at)
+		VALUES (?, 'h2', '127.0.0.1', 22, ?, 1, ?, 1, 1)`, hostID2, cred.ID, capJSON)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -173,7 +180,7 @@ func newEngineFixture(t *testing.T, cfg Config, runner Runner) *engineFixture {
 		t.Fatal(err)
 	}
 	t.Cleanup(eng.Stop)
-	return &engineFixture{engine: eng, store: st, creds: creds, hostID: hostID, logs: logs}
+	return &engineFixture{engine: eng, store: st, creds: creds, hostID: hostID, hostID2: hostID2, logs: logs}
 }
 
 func toolPlan(name, content string) Plan {
@@ -537,6 +544,72 @@ func submitGraph(t *testing.T, fx *engineFixture, nodes []GraphNode, edges []Gra
 		t.Fatal(err)
 	}
 	return ex
+}
+
+func TestGraphUsesPerNodeHosts(t *testing.T) {
+	runner := &fakeRunner{responses: []fakeResponse{{code: 0, stdout: "first\n"}, {code: 0, stdout: "second\n"}}}
+	fx := newEngineFixture(t, Config{}, &fakeRunnerWrapper{r: runner})
+	n1 := graphNode("n1", "first", "first")
+	n1.HostIDs = []string{fx.hostID}
+	n2 := graphNode("n2", "second", "second")
+	n2.HostIDs = []string{fx.hostID2}
+	plan := Plan{Kind: "flow", Name: "cross-host", MaxDurationSec: 600, Graph: &GraphPlan{
+		Nodes: []GraphNode{
+			{ID: "start", Type: "start", Name: "开始"},
+			n1,
+			n2,
+		},
+		Edges: []GraphEdge{
+			{From: "start", To: "n1", Condition: "always"},
+			{From: "n1", To: "n2", Condition: "success"},
+		},
+	}}
+	ex, err := fx.engine.Submit(context.Background(), SubmitRequest{Kind: "flow", Name: "cross-host", Plan: plan})
+	if err != nil {
+		t.Fatal(err)
+	}
+	final := waitTerminal(t, fx.engine, ex.ID)
+	if final.Status != "success" || final.HostTotal != 2 {
+		t.Fatalf("final = %+v", final)
+	}
+	hosts, _ := fx.engine.HostRuns(context.Background(), ex.ID)
+	hostNameByRun := map[string]string{}
+	for _, host := range hosts {
+		hostNameByRun[host.ID] = host.HostName
+	}
+	steps, _ := fx.engine.StepRuns(context.Background(), ex.ID)
+	if len(steps) != 2 {
+		t.Fatalf("steps = %+v", steps)
+	}
+	for _, step := range steps {
+		hostName := hostNameByRun[step.HostRunID]
+		switch step.NodeID {
+		case "n1":
+			if hostName != "h1" {
+				t.Fatalf("n1 ran on %q", hostName)
+			}
+		case "n2":
+			if hostName != "h2" {
+				t.Fatalf("n2 ran on %q", hostName)
+			}
+		default:
+			t.Fatalf("unexpected step: %+v", step)
+		}
+	}
+}
+
+func TestGraphRequiresHostsForEveryNode(t *testing.T) {
+	fx := newEngineFixture(t, Config{}, &fakeRunnerWrapper{r: &fakeRunner{}})
+	plan := Plan{Kind: "flow", Name: "no-hosts", MaxDurationSec: 600, Graph: &GraphPlan{
+		Nodes: []GraphNode{
+			{ID: "start", Type: "start", Name: "开始"},
+			graphNode("n1", "first", "first"),
+		},
+		Edges: []GraphEdge{{From: "start", To: "n1", Condition: "always"}},
+	}}
+	if _, err := fx.engine.Submit(context.Background(), SubmitRequest{Kind: "flow", Name: "no-hosts", Plan: plan}); !errors.Is(err, ErrNoHosts) {
+		t.Fatalf("err = %v, want ErrNoHosts", err)
+	}
 }
 
 func TestGraphOutputConditionAndSkip(t *testing.T) {

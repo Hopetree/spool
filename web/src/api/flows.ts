@@ -21,6 +21,7 @@ export interface FlowNode {
   tool_id: string;
   tool_name: string;
   tool_type: string;
+  host_ids: string[];
   mapping: Record<string, FlowMapping>;
   timeout_sec: number;
   retry_count: number;
@@ -61,6 +62,7 @@ export interface FlowNodeInput {
   type: FlowNodeType;
   name: string;
   tool_id: string;
+  host_ids: string[];
   mapping: Record<string, FlowMapping>;
   timeout_sec: number;
   retry_count: number;

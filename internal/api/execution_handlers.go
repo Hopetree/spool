@@ -57,6 +57,7 @@ type executionGraphNode struct {
 	ToolName      string            `json:"tool_name,omitempty"`
 	ToolType      string            `json:"tool_type,omitempty"`
 	ToolVersionNo int               `json:"tool_version_no,omitempty"`
+	HostIDs       []string          `json:"host_ids,omitempty"`
 	Params        map[string]string `json:"params,omitempty"`
 	X             float64           `json:"x"`
 	Y             float64           `json:"y"`
@@ -85,7 +86,7 @@ func executionGraphOf(planJSON string) *executionGraph {
 	for _, n := range plan.Graph.Nodes {
 		out.Nodes = append(out.Nodes, executionGraphNode{
 			ID: n.ID, Type: n.Type, Name: n.Name, ToolID: n.ToolID, ToolName: n.ToolName,
-			ToolType: n.ToolType, ToolVersionNo: n.ToolVersionNo, Params: n.Params, X: n.X, Y: n.Y,
+			ToolType: n.ToolType, ToolVersionNo: n.ToolVersionNo, HostIDs: n.HostIDs, Params: n.Params, X: n.X, Y: n.Y,
 		})
 	}
 	for _, e := range plan.Graph.Edges {
@@ -295,7 +296,7 @@ func createExecutionHandler(d Deps) gin.HandlerFunc {
 			fail(c, http.StatusBadRequest, "validation_failed", "请求格式不正确", nil)
 			return
 		}
-		if len(in.HostIDs) == 0 || (in.Kind != "adhoc" && in.RefID == "") {
+		if (in.Kind == "tool" && len(in.HostIDs) == 0) || (in.Kind != "adhoc" && in.RefID == "") {
 			fail(c, http.StatusBadRequest, "validation_failed", "必须选择执行对象和主机", nil)
 			return
 		}
@@ -387,7 +388,7 @@ func createExecutionHandler(d Deps) gin.HandlerFunc {
 		})
 		if err != nil {
 			if errors.Is(err, exec.ErrNoHosts) {
-				fail(c, http.StatusBadRequest, "no_hosts", "所选主机不可用或已停用", nil)
+				fail(c, http.StatusBadRequest, "no_hosts", "没有可执行的主机，请检查节点主机配置或执行目标", nil)
 				return
 			}
 			fail(c, http.StatusInternalServerError, "internal_error", "提交执行失败", nil)

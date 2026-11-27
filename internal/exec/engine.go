@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"path"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -336,12 +337,79 @@ type hostRow struct {
 	Enabled         bool   `db:"enabled"`
 }
 
+func uniqueIDs(ids []string) []string {
+	out := make([]string, 0, len(ids))
+	seen := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		if id == "" || seen[id] {
+			continue
+		}
+		seen[id] = true
+		out = append(out, id)
+	}
+	return out
+}
+
+// normalizeGraphHosts fills nodes without an explicit host list from the
+// execution-level fallback and returns the union of all node hosts.
+func normalizeGraphHosts(plan *Plan, fallback []string) ([]string, error) {
+	if plan.Graph == nil {
+		return uniqueIDs(fallback), nil
+	}
+	fallback = uniqueIDs(fallback)
+	all := []string{}
+	seen := map[string]bool{}
+	for i := range plan.Graph.Nodes {
+		node := &plan.Graph.Nodes[i]
+		if node.Type != "tool" {
+			node.HostIDs = nil
+			continue
+		}
+		hosts := uniqueIDs(node.HostIDs)
+		if len(hosts) == 0 {
+			hosts = append([]string{}, fallback...)
+		}
+		if len(hosts) == 0 {
+			return nil, ErrNoHosts
+		}
+		node.HostIDs = hosts
+		for _, id := range hosts {
+			if !seen[id] {
+				seen[id] = true
+				all = append(all, id)
+			}
+		}
+	}
+	if len(all) == 0 {
+		return nil, ErrNoHosts
+	}
+	return all, nil
+}
+
 // Submit persists an execution and starts it asynchronously.
 func (e *Engine) Submit(ctx context.Context, req SubmitRequest) (*Execution, error) {
+	perHostGraph := false
+	if req.Plan.Graph != nil {
+		anyExplicit := false
+		for _, node := range req.Plan.Graph.Nodes {
+			if node.Type == "tool" && len(node.HostIDs) > 0 {
+				anyExplicit = true
+				break
+			}
+		}
+		// With no node-level host selection, keep the legacy "run the whole
+		// graph on every selected host" semantics.
+		perHostGraph = !anyExplicit
+	}
+	requested, err := normalizeGraphHosts(&req.Plan, req.HostIDs)
+	if err != nil {
+		return nil, err
+	}
+	req.Plan.PerHostGraph = perHostGraph
 	hosts := []hostRow{}
-	if len(req.HostIDs) > 0 {
+	if len(requested) > 0 {
 		q, args, err := sqlx.In(`SELECT id, name, address, port, credential_id, fingerprint, fingerprint_type, enabled
-			FROM hosts WHERE id IN (?) AND enabled = 1`, req.HostIDs)
+			FROM hosts WHERE id IN (?) AND enabled = 1`, requested)
 		if err != nil {
 			return nil, err
 		}
@@ -353,16 +421,45 @@ func (e *Engine) Submit(ctx context.Context, req SubmitRequest) (*Execution, err
 	for _, h := range hosts {
 		byID[h.ID] = h
 	}
-	ordered := make([]hostRow, 0, len(req.HostIDs))
-	seen := make(map[string]bool, len(req.HostIDs))
-	for _, id := range req.HostIDs {
-		if seen[id] {
+	ordered := make([]hostRow, 0, len(requested))
+	valid := make(map[string]bool, len(requested))
+	for _, id := range requested {
+		if valid[id] {
 			continue
 		}
-		seen[id] = true
 		if h, ok := byID[id]; ok {
+			valid[id] = true
 			ordered = append(ordered, h)
 		}
+	}
+	if req.Plan.Graph != nil {
+		filteredUnion := []string{}
+		seen := map[string]bool{}
+		for i := range req.Plan.Graph.Nodes {
+			node := &req.Plan.Graph.Nodes[i]
+			if node.Type != "tool" {
+				continue
+			}
+			filtered := make([]string, 0, len(node.HostIDs))
+			for _, id := range node.HostIDs {
+				if valid[id] {
+					filtered = append(filtered, id)
+				}
+			}
+			if len(filtered) == 0 {
+				return nil, ErrNoHosts
+			}
+			node.HostIDs = filtered
+			for _, id := range filtered {
+				if !seen[id] {
+					seen[id] = true
+					filteredUnion = append(filteredUnion, id)
+				}
+			}
+		}
+		req.HostIDs = filteredUnion
+	} else {
+		req.HostIDs = requested
 	}
 	if len(ordered) == 0 {
 		return nil, ErrNoHosts
@@ -401,20 +498,28 @@ func (e *Engine) Submit(ctx context.Context, req SubmitRequest) (*Execution, err
 	if err != nil {
 		return nil, fmt.Errorf("insert execution: %w", err)
 	}
+	hostRunIDs := make(map[string]string, len(ordered))
 	for _, h := range ordered {
 		hostRunID := store.NewULID()
+		hostRunIDs[h.ID] = hostRunID
 		_, err = tx.ExecContext(ctx, `INSERT INTO host_runs (id, execution_id, host_id, host_name_snapshot, status)
 			VALUES (?, ?, ?, ?, 'queued')`, hostRunID, execID, h.ID, h.Name)
 		if err != nil {
 			return nil, fmt.Errorf("insert host run: %w", err)
 		}
-		if req.Plan.Graph != nil {
-			order := 0
-			for _, node := range req.Plan.Graph.Nodes {
-				if node.Type != "tool" {
-					continue
+	}
+	if req.Plan.Graph != nil {
+		order := 0
+		for _, node := range req.Plan.Graph.Nodes {
+			if node.Type != "tool" {
+				continue
+			}
+			order++
+			for _, hostID := range node.HostIDs {
+				hostRunID := hostRunIDs[hostID]
+				if hostRunID == "" {
+					return nil, fmt.Errorf("host %s not prepared", hostID)
 				}
-				order++
 				_, err = tx.ExecContext(ctx, `INSERT INTO step_runs
 					(id, host_run_id, node_id, stage_idx, step_idx, name_snapshot, tool_id, tool_version_id, tool_version_no,
 					 content_hash, interpreter, sudo, status)
@@ -425,7 +530,10 @@ func (e *Engine) Submit(ctx context.Context, req SubmitRequest) (*Execution, err
 					return nil, fmt.Errorf("insert step run: %w", err)
 				}
 			}
-		} else {
+		}
+	} else {
+		for _, h := range ordered {
+			hostRunID := hostRunIDs[h.ID]
 			for _, stage := range req.Plan.Stages {
 				for _, st := range stage.Steps {
 					_, err = tx.ExecContext(ctx, `INSERT INTO step_runs
@@ -531,21 +639,25 @@ func (e *Engine) runExecution(execID string) {
 		return
 	}
 	steps, _ := e.StepRuns(ctx, execID)
-	byHost := map[string][]*StepRun{}
-	for i := range steps {
-		byHost[steps[i].HostRunID] = append(byHost[steps[i].HostRunID], &steps[i])
-	}
+	if plan.Graph != nil && !plan.PerHostGraph {
+		e.runGraphExecution(ctx, log, *ex, plan, sensitive, hostRuns, steps)
+	} else {
+		byHost := map[string][]*StepRun{}
+		for i := range steps {
+			byHost[steps[i].HostRunID] = append(byHost[steps[i].HostRunID], &steps[i])
+		}
 
-	var wg sync.WaitGroup
-	for i := range hostRuns {
-		hr := hostRuns[i]
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			e.runHost(ctx, log, *ex, hr, byHost[hr.ID], plan, sensitive)
-		}()
+		var wg sync.WaitGroup
+		for i := range hostRuns {
+			hr := hostRuns[i]
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				e.runHost(ctx, log, *ex, hr, byHost[hr.ID], plan, sensitive)
+			}()
+		}
+		wg.Wait()
 	}
-	wg.Wait()
 
 	finalHosts, _ := e.HostRuns(context.Background(), execID)
 	statuses := make([]string, 0, len(finalHosts))
@@ -1038,11 +1150,26 @@ func (s *logSink) writeOut(data []byte) { s.write("stdout", data) }
 func (s *logSink) writeErr(data []byte) { s.write("stderr", data) }
 
 type graphNodeResult struct {
-	ID      string
-	Status  string
-	Output  string
-	Reason  string
-	Message string
+	ID          string
+	Status      string
+	Output      string
+	Reason      string
+	Message     string
+	HostResults []graphHostResult
+}
+
+type graphHostResult struct {
+	HostRunID string
+	Status    string
+	Output    string
+	Reason    string
+	Message   string
+}
+
+type graphHostState struct {
+	failed  bool
+	reason  string
+	message string
 }
 
 func graphNodeStep(n GraphNode) Step {
@@ -1069,6 +1196,289 @@ func edgeMatches(edge GraphEdge, res graphNodeResult) bool {
 		return !strings.Contains(res.Output, edge.Value)
 	}
 	return false
+}
+
+func (e *Engine) runGraphExecution(ctx context.Context, log *EventLog, ex Execution, plan Plan,
+	sensitive map[string]string, hosts []HostRun, steps []StepRun) {
+	graph := plan.Graph
+	if graph == nil {
+		return
+	}
+	graphCtx := ctx
+	if plan.MaxDurationSec > 0 {
+		var cancelTimeout context.CancelFunc
+		graphCtx, cancelTimeout = context.WithTimeout(graphCtx, time.Duration(plan.MaxDurationSec)*time.Second)
+		defer cancelTimeout()
+	}
+
+	hostByRunID := make(map[string]HostRun, len(hosts))
+	hostByHostID := make(map[string]HostRun, len(hosts))
+	hostCtx := make(map[string]context.Context, len(hosts))
+	hostCancels := make(map[string]context.CancelFunc, len(hosts))
+	for i := range hosts {
+		hr := hosts[i]
+		hostByRunID[hr.ID] = hr
+		hostByHostID[hr.HostID] = hr
+		hctx, hcancel := context.WithCancel(graphCtx)
+		hostCtx[hr.ID] = hctx
+		hostCancels[hr.ID] = hcancel
+		e.mu.Lock()
+		e.hostCancels[hr.ID] = hcancel
+		e.mu.Unlock()
+	}
+	// Hold one lock per host for the whole graph. Nodes on the same host can
+	// still run in parallel inside this execution, while other executions are
+	// serialized on that host. Sorting prevents lock-order deadlocks.
+	hostIDs := make([]string, 0, len(hostByHostID))
+	for id := range hostByHostID {
+		hostIDs = append(hostIDs, id)
+	}
+	sort.Strings(hostIDs)
+	for _, id := range hostIDs {
+		lock := e.hostLock(id)
+		lock.Lock()
+		defer lock.Unlock()
+	}
+	defer func() {
+		for id, cancel := range hostCancels {
+			cancel()
+			e.mu.Lock()
+			delete(e.hostCancels, id)
+			e.mu.Unlock()
+		}
+	}()
+
+	for i := range hosts {
+		hr := hosts[i]
+		_, _ = e.db.Exec(`UPDATE host_runs SET status='running', started_at=? WHERE id=?`, e.nowMs(), hr.ID)
+		log.Emit(Event{Type: "state", Entity: "host_run", Status: "running", HostRunID: hr.ID})
+	}
+
+	nodes := make(map[string]GraphNode, len(graph.Nodes))
+	for _, node := range graph.Nodes {
+		nodes[node.ID] = node
+	}
+	stepByNodeHost := make(map[string]map[string]*StepRun, len(nodes))
+	for i := range steps {
+		sr := &steps[i]
+		if sr.NodeID == "" {
+			continue
+		}
+		hr, ok := hostByRunID[sr.HostRunID]
+		if !ok {
+			continue
+		}
+		if stepByNodeHost[sr.NodeID] == nil {
+			stepByNodeHost[sr.NodeID] = map[string]*StepRun{}
+		}
+		stepByNodeHost[sr.NodeID][hr.HostID] = sr
+	}
+	outgoing := make(map[string][]GraphEdge, len(nodes))
+	for _, edge := range graph.Edges {
+		outgoing[edge.From] = append(outgoing[edge.From], edge)
+	}
+
+	started := map[string]bool{"start": true}
+	launched := map[string]bool{}
+	ready := []string{}
+	for _, edge := range outgoing["start"] {
+		if !started[edge.To] {
+			started[edge.To] = true
+			ready = append(ready, edge.To)
+		}
+	}
+	hostStates := make(map[string]*graphHostState, len(hosts))
+	for i := range hosts {
+		hostStates[hosts[i].ID] = &graphHostState{}
+	}
+	doneCh := make(chan graphNodeResult, len(graph.Nodes)+1)
+	running := 0
+
+	for {
+		for len(ready) > 0 && graphCtx.Err() == nil {
+			id := ready[0]
+			ready = ready[1:]
+			node, ok := nodes[id]
+			if !ok || node.Type != "tool" || launched[id] {
+				continue
+			}
+			launched[id] = true
+			running++
+			go func(node GraphNode) {
+				doneCh <- e.runGraphNode(graphCtx, log, ex, node, stepByNodeHost[node.ID], hostByHostID, hostCtx, sensitive)
+			}(node)
+		}
+		if running == 0 {
+			break
+		}
+		res := <-doneCh
+		running--
+
+		handledFailure := false
+		for _, edge := range outgoing[res.ID] {
+			if graphCtx.Err() != nil {
+				break
+			}
+			if !edgeMatches(edge, res) {
+				continue
+			}
+			if res.Status == "failed" && edge.Condition != "always" {
+				handledFailure = true
+			}
+			if !started[edge.To] {
+				started[edge.To] = true
+				ready = append(ready, edge.To)
+			}
+		}
+		if res.Status == "failed" && !handledFailure {
+			for _, hostResult := range res.HostResults {
+				if hostResult.Status != "failed" {
+					continue
+				}
+				state := hostStates[hostResult.HostRunID]
+				if state == nil || state.failed {
+					continue
+				}
+				state.failed = true
+				state.reason = hostResult.Reason
+				state.message = hostResult.Message
+			}
+		}
+	}
+
+	for i := range steps {
+		sr := &steps[i]
+		if sr.Status == "queued" {
+			e.finishStep(log, sr, "skipped", "skipped", nil, "分支未触发或执行已取消", 0, 0, false, 0)
+		}
+	}
+
+	timeout := errors.Is(graphCtx.Err(), context.DeadlineExceeded)
+	graphCancelled := graphCtx.Err() != nil
+	for i := range hosts {
+		hr := hosts[i]
+		state := hostStates[hr.ID]
+		status, reason, msg := "success", "", ""
+		switch {
+		case timeout:
+			status, reason, msg = "failed", "flow_timeout", "流程执行超时"
+		case graphCancelled:
+			status = e.cancelStatus()
+			reason, msg = status, "执行已取消"
+		case hostCtx[hr.ID].Err() != nil:
+			status, reason, msg = "cancelled", "cancelled", "主机执行已取消"
+		case state != nil && state.failed:
+			status, reason, msg = "failed", state.reason, state.message
+		}
+		e.finishHost(log, hr.ID, status, reason, msg)
+	}
+}
+
+func (e *Engine) runGraphNode(ctx context.Context, log *EventLog, ex Execution, node GraphNode,
+	steps map[string]*StepRun, hostByHostID map[string]HostRun, hostCtx map[string]context.Context,
+	sensitive map[string]string) graphNodeResult {
+	hostResults := make([]graphHostResult, len(node.HostIDs))
+	var wg sync.WaitGroup
+	for i, hostID := range node.HostIDs {
+		hr, ok := hostByHostID[hostID]
+		sr := steps[hostID]
+		if !ok || sr == nil {
+			hostResults[i] = graphHostResult{Status: "failed", Reason: "internal_error", Message: "执行计划缺少主机步骤"}
+			continue
+		}
+		hctx := hostCtx[hr.ID]
+		if hctx == nil {
+			hctx = ctx
+		}
+		wg.Add(1)
+		go func(index int, hr HostRun, sr *StepRun) {
+			defer wg.Done()
+			hostResults[index] = e.runGraphNodeHost(hctx, log, ex, hr, sr, node, sensitive)
+		}(i, hr, sr)
+	}
+	wg.Wait()
+
+	result := graphNodeResult{ID: node.ID, HostResults: hostResults}
+	var output strings.Builder
+	var failed, cancelled, success int
+	for _, hostResult := range hostResults {
+		if hostResult.Output != "" {
+			if output.Len() > 0 {
+				output.WriteByte('\n')
+			}
+			output.WriteString(hostResult.Output)
+		}
+		switch hostResult.Status {
+		case "failed":
+			failed++
+			if result.Reason == "" {
+				result.Reason, result.Message = hostResult.Reason, hostResult.Message
+			}
+		case "cancelled":
+			cancelled++
+			if result.Reason == "" {
+				result.Reason, result.Message = hostResult.Reason, hostResult.Message
+			}
+		case "success":
+			success++
+		}
+	}
+	result.Output = output.String()
+	switch {
+	case failed > 0:
+		result.Status = "failed"
+	case cancelled > 0:
+		result.Status = "cancelled"
+	case success > 0:
+		result.Status = "success"
+	default:
+		result.Status = "failed"
+		result.Reason = "internal_error"
+		result.Message = "节点没有可执行的主机"
+	}
+	return result
+}
+
+func (e *Engine) runGraphNodeHost(ctx context.Context, log *EventLog, ex Execution, hr HostRun,
+	sr *StepRun, node GraphNode, sensitive map[string]string) graphHostResult {
+	if ctx.Err() != nil {
+		e.finishStep(log, sr, "skipped", "cancelled", nil, "执行已取消", 0, 0, false, 0)
+		return graphHostResult{HostRunID: hr.ID, Status: "cancelled", Reason: "cancelled", Message: "执行已取消"}
+	}
+	select {
+	case e.hostSem <- struct{}{}:
+		defer func() { <-e.hostSem }()
+	case <-ctx.Done():
+		e.finishStep(log, sr, "skipped", "cancelled", nil, "执行已取消", 0, 0, false, 0)
+		return graphHostResult{HostRunID: hr.ID, Status: "cancelled", Reason: "cancelled", Message: "执行已取消"}
+	}
+	if ctx.Err() != nil {
+		e.finishStep(log, sr, "skipped", "cancelled", nil, "执行已取消", 0, 0, false, 0)
+		return graphHostResult{HostRunID: hr.ID, Status: "cancelled", Reason: "cancelled", Message: "执行已取消"}
+	}
+	target, err := e.loadHost(ctx, hr.HostID)
+	if err != nil {
+		e.finishStep(log, sr, "failed", "host_unavailable", nil, err.Error(), 0, 0, false, 0)
+		return graphHostResult{HostRunID: hr.ID, Status: "failed", Reason: "host_unavailable", Message: err.Error()}
+	}
+	runner, err := e.factory.Connect(ctx, target.ref)
+	if err != nil {
+		e.finishStep(log, sr, "failed", "ssh_error", nil, err.Error(), 0, 0, false, 0)
+		return graphHostResult{HostRunID: hr.ID, Status: "failed", Reason: "ssh_error", Message: err.Error()}
+	}
+	defer runner.Close()
+	output := e.runStep(ctx, log, ex, hr, sr, graphNodeStep(node), sensitive, target.cap, runner)
+	status := sr.Status
+	if status == "" {
+		status = "failed"
+		sr.Status = status
+		sr.FailureReason = "internal_error"
+		sr.ErrorMessage = "步骤没有结束状态"
+	}
+	return graphHostResult{
+		HostRunID: hr.ID, Status: status, Output: output,
+		Reason: sr.FailureReason, Message: sr.ErrorMessage,
+	}
 }
 
 func (e *Engine) runHostGraph(ctx context.Context, log *EventLog, ex Execution, hr HostRun, plan Plan,

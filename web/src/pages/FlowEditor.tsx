@@ -11,7 +11,9 @@ import {
   InputNumber,
   Select,
   Space,
+  Steps,
   Switch,
+  Table,
   Tag,
   Typography,
 } from "antd";
@@ -40,6 +42,7 @@ import {
   type FlowInput,
   type FlowMapping,
 } from "../api/flows";
+import { listHosts } from "../api/hosts";
 import { listTools, type ToolSummary } from "../api/tools";
 import {
   edgeConditionOptions,
@@ -93,6 +96,7 @@ function toolNodeData(name = "新节点"): FlowNodeData {
     toolID: "",
     toolName: "",
     toolType: "",
+    hostIDs: [],
     mapping: {},
     timeoutSec: 0,
     retryCount: 0,
@@ -201,6 +205,7 @@ export default function FlowEditor() {
   const [edges, setEdges] = useState<FlowRFEdge[]>([]);
   const [selectedNodeID, setSelectedNodeID] = useState<string>();
   const [selectedEdgeID, setSelectedEdgeID] = useState<string>();
+  const [step, setStep] = useState(0);
   const flowRef = useRef<ReactFlowInstance<FlowRFNode, FlowRFEdge> | null>(null);
 
   const { data: detail } = useQuery({
@@ -212,11 +217,17 @@ export default function FlowEditor() {
     queryKey: ["tools", "flow-editor"],
     queryFn: () => listTools({ page: 1, page_size: 100 }),
   });
+  const { data: hostPage } = useQuery({
+    queryKey: ["hosts", "flow-editor"],
+    queryFn: () => listHosts({ page: 1, page_size: 100 }),
+  });
   const { data: categories = [] } = useQuery({
     queryKey: ["flow-categories"],
     queryFn: listFlowCategories,
   });
   const tools = (toolPage?.items ?? []).filter((t) => t.enabled);
+  const hosts = (hostPage?.items ?? []).filter((h) => h.enabled);
+  const hostNameByID = new Map((hostPage?.items ?? []).map((host) => [host.id, host.name]));
   const watchedParams = Form.useWatch("params", form) as ParamForm[] | undefined;
   const flowParams = watchedParams ?? [];
 
@@ -248,6 +259,7 @@ export default function FlowEditor() {
                   toolID: "",
                   toolName: "",
                   toolType: "",
+                  hostIDs: [],
                   mapping: {},
                   timeoutSec: 0,
                   retryCount: 0,
@@ -404,6 +416,7 @@ export default function FlowEditor() {
       type: n.data.kind,
       name: n.data.kind === "start" ? "开始" : n.data.name,
       tool_id: n.data.kind === "start" ? "" : n.data.toolID,
+      host_ids: n.data.kind === "start" ? [] : n.data.hostIDs,
       mapping: n.data.kind === "start" ? {} : n.data.mapping,
       timeout_sec: n.data.timeoutSec,
       retry_count: n.data.retryCount,
@@ -467,7 +480,7 @@ export default function FlowEditor() {
         crumbs={[{ title: "流程", to: "/flows" }, { title: isNew ? "新建流程" : "编辑流程" }]}
         extra={
           <>
-            <Button onClick={addNode}>添加工具节点</Button>
+            {step === 1 && <Button onClick={addNode}>添加工具节点</Button>}
             <Button type="primary" loading={save.isPending} onClick={() => form.submit()}>
               保存流程
             </Button>
@@ -475,12 +488,28 @@ export default function FlowEditor() {
         }
       />
 
+      <Steps
+        current={step}
+        onChange={setStep}
+        style={{ marginBottom: 16 }}
+        items={[
+          { title: "基本信息", description: "定义流程与运行参数" },
+          { title: "流程设计", description: "绘制节点与连线" },
+          { title: "参数设置", description: "配置节点主机与参数" },
+        ]}
+      />
+
       <Form<FormValues>
         form={form}
         layout="vertical"
         onFinish={submit}
+        onFinishFailed={() => {
+          setStep(0);
+          message.warning("请先完善基本信息");
+        }}
         initialValues={{ max_duration_sec: 3600, params: [] }}
       >
+        <div style={{ display: step === 0 ? undefined : "none" }}>
         <Card title="基本信息" style={{ marginBottom: 16 }}>
           <Space wrap align="start">
             <Form.Item name="name" label="名称" rules={[{ required: true, message: "请输入名称" }]} style={{ width: 240 }}>
@@ -499,7 +528,7 @@ export default function FlowEditor() {
                 filterOption={(input, option) => String(option?.value ?? "").includes(input)}
               />
             </Form.Item>
-            <Form.Item name="max_duration_sec" label="单机最大时长（秒）" style={{ width: 180 }}>
+            <Form.Item name="max_duration_sec" label="最大执行时长（秒）" style={{ width: 180 }}>
               <InputNumber min={1} max={86400} style={{ width: "100%" }} />
             </Form.Item>
           </Space>
@@ -547,7 +576,9 @@ export default function FlowEditor() {
             )}
           </Form.List>
         </Card>
+        </div>
 
+        {step === 1 && (
         <Card
           title="流程图"
           style={{ marginBottom: 16 }}
@@ -592,7 +623,78 @@ export default function FlowEditor() {
             </ReactFlow>
           </div>
         </Card>
+        )}
+
+        {step === 2 && (
+          <Card title="参数设置" style={{ marginBottom: 16 }}>
+            <Alert
+              type="info"
+              showIcon
+              message="每个工具节点可单独选择执行主机；留空时使用流程执行时选择的默认主机。点击“配置”可设置主机、超时、重试和参数映射。"
+              style={{ marginBottom: 12 }}
+            />
+            <Table<FlowRFNode>
+              rowKey="id"
+              size="small"
+              pagination={false}
+              dataSource={nodes.filter((node) => node.data.kind === "tool")}
+              locale={{ emptyText: "尚未添加工具节点，请返回“流程设计”添加节点" }}
+              columns={[
+                {
+                  title: "节点",
+                  render: (_, node) => (
+                    <Button type="link" style={{ padding: 0 }} onClick={() => setSelectedNodeID(node.id)}>
+                      {node.data.name || "未命名节点"}
+                    </Button>
+                  ),
+                },
+                {
+                  title: "工具",
+                  render: (_, node) => node.data.toolName || "未选择",
+                  ellipsis: true,
+                },
+                {
+                  title: "执行主机",
+                  ellipsis: true,
+                  render: (_, node) =>
+                    node.data.hostIDs.length > 0
+                      ? node.data.hostIDs.map((id) => hostNameByID.get(id) ?? id).join("、")
+                      : "默认主机",
+                },
+                {
+                  title: "参数映射",
+                  width: 120,
+                  render: (_, node) => {
+                    const tool = tools.find((item) => item.id === node.data.toolID);
+                    if (!tool) return "—";
+                    return `${Object.keys(node.data.mapping).length}/${tool.params.length} 已映射`;
+                  },
+                },
+                {
+                  title: "操作",
+                  width: 80,
+                  render: (_, node) => (
+                    <Button size="small" onClick={() => setSelectedNodeID(node.id)}>
+                      配置
+                    </Button>
+                  ),
+                },
+              ]}
+            />
+          </Card>
+        )}
       </Form>
+
+      <Space style={{ marginTop: 4 }}>
+        <Button disabled={step === 0} onClick={() => setStep((current) => current - 1)}>
+          上一步
+        </Button>
+        {step < 2 && (
+          <Button type="primary" onClick={() => setStep((current) => current + 1)}>
+            下一步
+          </Button>
+        )}
+      </Space>
 
       <Drawer
         open={!!selectedNode}
@@ -639,6 +741,23 @@ export default function FlowEditor() {
                 />
               </div>
             </Space>
+            <div>
+              <div style={{ fontSize: 12, color: "#8c8c8c", marginBottom: 4 }}>执行主机</div>
+              <Select
+                mode="multiple"
+                allowClear
+                showSearch
+                optionFilterProp="label"
+                style={{ width: "100%" }}
+                placeholder="选择该节点执行的主机"
+                value={selectedNode.data.hostIDs}
+                onChange={(hostIDs) => updateNodeData(selectedNode.id, { hostIDs })}
+                options={hosts.map((h) => ({ value: h.id, label: `${h.name} (${h.address})` }))}
+              />
+              <div style={{ fontSize: 12, color: "#8c8c8c", marginTop: 4 }}>
+                留空表示使用流程执行时选择的默认主机；设置后该节点只在所选主机执行。
+              </div>
+            </div>
             <Space wrap>
               <div>
                 <div style={{ fontSize: 12, color: "#8c8c8c" }}>超时（秒，0=工具默认）</div>

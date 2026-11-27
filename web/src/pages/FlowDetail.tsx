@@ -125,7 +125,7 @@ export default function FlowDetail() {
             items={[
               { key: "category", label: "分类", children: detail.category || "默认" },
               { key: "desc", label: "描述", children: detail.description || "—" },
-              { key: "duration", label: "单机最大时长", children: `${detail.max_duration_sec}s` },
+              { key: "duration", label: "最大执行时长", children: `${detail.max_duration_sec}s` },
               {
                 key: "params",
                 label: "流程参数",

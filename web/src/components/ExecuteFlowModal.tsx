@@ -79,6 +79,9 @@ export default function ExecuteFlowModal({ flowID, open, onClose }: Props) {
     form.setFieldsValue({ params: defaults });
   }, [open, flow, form]);
 
+  const toolNodes = (flow?.nodes ?? []).filter((node) => node.type === "tool");
+  const allNodesConfigured = toolNodes.length > 0 && toolNodes.every((node) => (node.host_ids ?? []).length > 0);
+
   return (
     <Modal
       open={open}
@@ -102,11 +105,21 @@ export default function ExecuteFlowModal({ flowID, open, onClose }: Props) {
           });
         }}
       >
-        <Form.Item name="host_ids" label="目标主机" rules={[{ required: true, message: "请选择主机" }]}>
+        <Form.Item
+          name="host_ids"
+          label="默认执行主机"
+          extra={
+            allNodesConfigured
+              ? "所有节点都已单独设置执行主机，此处可以不选。"
+              : "仅对未单独设置执行主机的节点生效；选择后未配置的节点会在这些主机上执行。"
+          }
+          rules={allNodesConfigured ? [] : [{ required: true, message: "请选择默认执行主机" }]}
+        >
           <Select
             mode="multiple"
             optionFilterProp="label"
-            placeholder="选择一台或多台主机"
+            disabled={allNodesConfigured}
+            placeholder={allNodesConfigured ? "无需选择" : "选择默认执行主机"}
             options={hosts.map((h) => ({ value: h.id, label: `${h.name} (${h.address})` }))}
           />
         </Form.Item>

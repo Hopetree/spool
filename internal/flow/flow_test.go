@@ -47,13 +47,14 @@ func baseFlowInput(toolA, toolB string) Input {
 			{ID: "start", Type: "start", Name: "开始"},
 			{
 				ID: "n1", Type: "tool", Name: "deploy", ToolID: toolA,
+				HostIDs: []string{"h1", "h2"},
 				Mapping: map[string]Mapping{
 					"ENV":   {Source: "flow", Value: "ENV"},
 					"TOKEN": {Source: "flow", Value: "SECRET"},
 				},
 				TimeoutSec: 60, RetryCount: 1, RetryDelaySec: 2, X: 260, Y: 40,
 			},
-			{ID: "n2", Type: "tool", Name: "cleanup", ToolID: toolB, X: 520, Y: 40},
+			{ID: "n2", Type: "tool", Name: "cleanup", ToolID: toolB, HostIDs: []string{"h2"}, X: 520, Y: 40},
 		},
 		Edges: []EdgeInput{
 			{From: "start", To: "n1", Condition: CondAlways},
@@ -80,6 +81,14 @@ func TestCreateGetUpdateCopyDelete(t *testing.T) {
 	}
 	if created.Nodes[0].Type != NodeStart || created.Nodes[0].ID != "start" {
 		t.Fatalf("start node = %+v", created.Nodes[0])
+	}
+	for _, node := range created.Nodes {
+		if node.ID == "n1" && (len(node.HostIDs) != 2 || node.HostIDs[0] != "h1" || node.HostIDs[1] != "h2") {
+			t.Fatalf("n1 hosts = %v", node.HostIDs)
+		}
+		if node.ID == "n2" && (len(node.HostIDs) != 1 || node.HostIDs[0] != "h2") {
+			t.Fatalf("n2 hosts = %v", node.HostIDs)
+		}
 	}
 
 	list, total, err := svc.List(ctx, ListFilter{Page: 1, PageSize: 10})
@@ -187,6 +196,9 @@ func TestCompileBuildsGraph(t *testing.T) {
 	for _, node := range res.Plan.Graph.Nodes {
 		if node.ID == "n1" {
 			params, sens = node.Params, node.SensitiveParams
+			if len(node.HostIDs) != 2 || node.HostIDs[0] != "h1" || node.HostIDs[1] != "h2" {
+				t.Fatalf("compiled n1 hosts = %v", node.HostIDs)
+			}
 		}
 	}
 	_ = n1

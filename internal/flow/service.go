@@ -37,6 +37,7 @@ type nodeRow struct {
 	Type          string  `db:"type"`
 	Name          string  `db:"name"`
 	ToolID        string  `db:"tool_id"`
+	HostIDsJSON   string  `db:"host_ids_json"`
 	MappingJSON   string  `db:"mapping_json"`
 	TimeoutSec    int     `db:"timeout_sec"`
 	RetryCount    int     `db:"retry_count"`
@@ -146,7 +147,7 @@ func (s *Service) Get(ctx context.Context, id string) (*Detail, error) {
 		return nil, fmt.Errorf("get flow: %w", err)
 	}
 	rows := []nodeRow{}
-	err = s.db.SelectContext(ctx, &rows, `SELECT n.id, n.flow_id, n.node_key, n.type, n.name, n.tool_id, n.mapping_json,
+	err = s.db.SelectContext(ctx, &rows, `SELECT n.id, n.flow_id, n.node_key, n.type, n.name, n.tool_id, n.host_ids_json, n.mapping_json,
 		n.timeout_sec, n.retry_count, n.retry_delay_sec, n.x, n.y,
 		COALESCE(t.name, '') AS tool_name, COALESCE(v.type, '') AS tool_type
 		FROM flow_nodes n
@@ -169,9 +170,13 @@ func (s *Service) Get(ctx context.Context, id string) (*Detail, error) {
 		if r.MappingJSON != "" {
 			_ = json.Unmarshal([]byte(r.MappingJSON), &mapping)
 		}
+		hostIDs := []string{}
+		if r.HostIDsJSON != "" {
+			_ = json.Unmarshal([]byte(r.HostIDsJSON), &hostIDs)
+		}
 		detail.Nodes = append(detail.Nodes, Node{
 			ID: r.NodeKey, Type: r.Type, Name: r.Name, ToolID: r.ToolID,
-			ToolName: r.ToolName, ToolType: r.ToolType, Mapping: mapping,
+			HostIDs: hostIDs, ToolName: r.ToolName, ToolType: r.ToolType, Mapping: mapping,
 			TimeoutSec: r.TimeoutSec, RetryCount: r.RetryCount, RetryDelaySec: r.RetryDelaySec,
 			X: r.X, Y: r.Y,
 		})
@@ -256,14 +261,18 @@ func (s *Service) insertGraph(ctx context.Context, tx *sqlx.Tx, flowID string, i
 		if err != nil {
 			return fmt.Errorf("marshal mapping: %w", err)
 		}
+		hostIDs, err := json.Marshal(node.HostIDs)
+		if err != nil {
+			return fmt.Errorf("marshal host ids: %w", err)
+		}
 		dbID := store.NewULID()
 		if node.Type == NodeStart {
 			dbID = "start-" + flowID
 		}
 		_, err = tx.ExecContext(ctx, `INSERT INTO flow_nodes
-			(id, flow_id, node_key, type, name, tool_id, mapping_json, timeout_sec, retry_count, retry_delay_sec, enabled, x, y)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`,
-			dbID, flowID, node.ID, node.Type, node.Name, node.ToolID, string(mapping),
+			(id, flow_id, node_key, type, name, tool_id, host_ids_json, mapping_json, timeout_sec, retry_count, retry_delay_sec, enabled, x, y)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`,
+			dbID, flowID, node.ID, node.Type, node.Name, node.ToolID, string(hostIDs), string(mapping),
 			node.TimeoutSec, node.RetryCount, node.RetryDelaySec, node.X, node.Y)
 		if err != nil {
 			return fmt.Errorf("insert node: %w", err)
@@ -397,7 +406,7 @@ func (s *Service) Copy(ctx context.Context, id, actorID string) (*Detail, error)
 	}
 	for _, n := range src.Nodes {
 		in.Nodes = append(in.Nodes, NodeInput{
-			ID: n.ID, Type: n.Type, Name: n.Name, ToolID: n.ToolID, Mapping: n.Mapping,
+			ID: n.ID, Type: n.Type, Name: n.Name, ToolID: n.ToolID, HostIDs: n.HostIDs, Mapping: n.Mapping,
 			TimeoutSec: n.TimeoutSec, RetryCount: n.RetryCount, RetryDelaySec: n.RetryDelaySec,
 			X: n.X, Y: n.Y,
 		})
@@ -532,7 +541,8 @@ func (s *Service) Compile(ctx context.Context, id string, values map[string]stri
 			Interpreter: td.Version.Interpreter, Content: td.Version.Content,
 			PrepareCommand: td.Version.PrepareCommand, Sudo: td.Version.Sudo,
 			TimeoutSec: timeout, RetryCount: node.RetryCount, RetryDelaySec: node.RetryDelaySec,
-			Params: nodePlain, SensitiveParams: nodeSensitive,
+			HostIDs: node.HostIDs,
+			Params:  nodePlain, SensitiveParams: nodeSensitive,
 			X: node.X, Y: node.Y,
 		})
 	}

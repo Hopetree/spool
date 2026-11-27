@@ -17,6 +17,7 @@ type flowNodeInput struct {
 	Type          string                  `json:"type"`
 	Name          string                  `json:"name"`
 	ToolID        string                  `json:"tool_id"`
+	HostIDs       []string                `json:"host_ids"`
 	Mapping       map[string]flow.Mapping `json:"mapping"`
 	TimeoutSec    int                     `json:"timeout_sec"`
 	RetryCount    int                     `json:"retry_count"`
@@ -49,7 +50,7 @@ func (in flowInput) toServiceInput() flow.Input {
 	}
 	for _, n := range in.Nodes {
 		out.Nodes = append(out.Nodes, flow.NodeInput{
-			ID: n.ID, Type: n.Type, Name: n.Name, ToolID: n.ToolID, Mapping: n.Mapping,
+			ID: n.ID, Type: n.Type, Name: n.Name, ToolID: n.ToolID, HostIDs: n.HostIDs, Mapping: n.Mapping,
 			TimeoutSec: n.TimeoutSec, RetryCount: n.RetryCount, RetryDelaySec: n.RetryDelaySec,
 			X: n.X, Y: n.Y,
 		})

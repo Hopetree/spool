@@ -8,6 +8,9 @@ type Plan struct {
 	MaxDurationSec int        `json:"max_duration_sec,omitempty"`
 	Stages         []Stage    `json:"stages,omitempty"`
 	Graph          *GraphPlan `json:"graph,omitempty"`
+	// PerHostGraph preserves the legacy behavior for flows whose nodes do not
+	// select hosts: every selected host runs the whole graph independently.
+	PerHostGraph bool `json:"per_host_graph,omitempty"`
 }
 
 // GraphPlan is a DAG execution plan: nodes run at most once per host, edges
@@ -26,6 +29,7 @@ type GraphNode struct {
 	ToolName        string            `json:"tool_name,omitempty"`
 	ToolVersionID   string            `json:"tool_version_id,omitempty"`
 	ToolVersionNo   int               `json:"tool_version_no,omitempty"`
+	HostIDs         []string          `json:"host_ids,omitempty"`
 	ContentHash     string            `json:"content_hash,omitempty"`
 	ToolType        string            `json:"tool_type,omitempty"`
 	Interpreter     string            `json:"interpreter,omitempty"`

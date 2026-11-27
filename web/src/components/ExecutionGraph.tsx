@@ -80,6 +80,7 @@ export default function ExecutionGraph({
         toolID: n.tool_id ?? "",
         toolName: n.tool_name ?? "",
         toolType: n.tool_type ?? "",
+        hostIDs: n.host_ids ?? [],
         mapping: {},
         timeoutSec: 0,
         retryCount: 0,

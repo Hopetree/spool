@@ -351,23 +351,40 @@ func (s *Service) validate(ctx context.Context, in *Input, existingSensitive map
 		return nil, nil, "", invalid("通知时机必须是 failure 或 always")
 	}
 	in.HostIDs = dedupe(in.HostIDs)
-	if len(in.HostIDs) == 0 {
-		return nil, nil, "", invalid("请选择至少一台主机")
+	needsHosts := in.TargetKind == "tool"
+	if in.TargetKind == "flow" && len(in.HostIDs) == 0 {
+		detail, err := s.flows.Get(ctx, in.TargetRefID)
+		if err != nil {
+			return nil, nil, "", err
+		}
+		allConfigured := true
+		for _, node := range detail.Nodes {
+			if node.Type == flow.NodeTool && len(node.HostIDs) == 0 {
+				allConfigured = false
+				break
+			}
+		}
+		needsHosts = !allConfigured
 	}
-	q, args, err := sqlx.In(`SELECT count(*) FROM hosts WHERE id IN (?)`, in.HostIDs)
-	if err != nil {
-		return nil, nil, "", err
+	if needsHosts && len(in.HostIDs) == 0 {
+		return nil, nil, "", invalid("请选择至少一台默认主机")
 	}
-	var hosts int
-	if err := s.db.GetContext(ctx, &hosts, s.db.Rebind(q), args...); err != nil {
-		return nil, nil, "", err
-	}
-	if hosts != len(in.HostIDs) {
-		return nil, nil, "", invalid("包含不存在的主机")
+	if len(in.HostIDs) > 0 {
+		q, args, err := sqlx.In(`SELECT count(*) FROM hosts WHERE id IN (?)`, in.HostIDs)
+		if err != nil {
+			return nil, nil, "", err
+		}
+		var hosts int
+		if err := s.db.GetContext(ctx, &hosts, s.db.Rebind(q), args...); err != nil {
+			return nil, nil, "", err
+		}
+		if hosts != len(in.HostIDs) {
+			return nil, nil, "", invalid("包含不存在的主机")
+		}
 	}
 	in.NotifyChannelIDs = dedupe(in.NotifyChannelIDs)
 	if len(in.NotifyChannelIDs) > 0 {
-		q, args, err = sqlx.In(`SELECT count(*) FROM notify_channels WHERE id IN (?)`, in.NotifyChannelIDs)
+		q, args, err := sqlx.In(`SELECT count(*) FROM notify_channels WHERE id IN (?)`, in.NotifyChannelIDs)
 		if err != nil {
 			return nil, nil, "", err
 		}

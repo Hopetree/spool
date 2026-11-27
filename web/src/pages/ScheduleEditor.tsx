@@ -114,6 +114,10 @@ export default function ScheduleEditor() {
     enabled: kind === "flow" && !!targetRef,
   });
   const params: ToolParam[] = kind === "tool" ? toolDetail?.version.params ?? [] : flowDetail?.params ?? [];
+  const flowToolNodes = (flowDetail?.nodes ?? []).filter((n) => n.type === "tool");
+  const flowAllNodesConfigured =
+    kind === "flow" && flowToolNodes.length > 0 && flowToolNodes.every((n) => (n.host_ids ?? []).length > 0);
+  const hostsRequired = kind !== "flow" || !flowAllNodesConfigured;
 
   const tools = (toolPage?.items ?? []).filter((t) => t.enabled);
   const flows = (flowPage?.items ?? []).filter((f) => f.enabled);
@@ -286,11 +290,24 @@ export default function ScheduleEditor() {
         </Card>
 
         <Card title="目标与参数" style={{ marginBottom: 16 }}>
-          <Form.Item name="host_ids" label="目标主机" rules={[{ required: true, message: "请选择主机" }]}>
+          <Form.Item
+            name="host_ids"
+            label={kind === "flow" ? "默认执行主机" : "目标主机"}
+            extra={
+              kind === "flow"
+                ? "仅对未单独设置执行主机的流程节点生效；所有节点都已设置执行主机时可以不选。"
+                : undefined
+            }
+            rules={
+              hostsRequired
+                ? [{ required: true, message: kind === "flow" ? "请选择默认执行主机" : "请选择主机" }]
+                : []
+            }
+          >
             <Select
               mode="multiple"
               optionFilterProp="label"
-              placeholder="选择一台或多台主机"
+              placeholder={kind === "flow" ? "可选，未配置主机的节点使用" : "选择一台或多台主机"}
               options={hosts.map((h) => ({
                 value: h.id,
                 label: `${h.name} (${h.address})${h.enabled ? "" : " [停用]"}`,

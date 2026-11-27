@@ -53,6 +53,7 @@ type Node struct {
 	ToolID        string             `json:"tool_id"`
 	ToolName      string             `json:"tool_name"`
 	ToolType      string             `json:"tool_type"`
+	HostIDs       []string           `json:"host_ids"`
 	Mapping       map[string]Mapping `json:"mapping"`
 	TimeoutSec    int                `json:"timeout_sec"`
 	RetryCount    int                `json:"retry_count"`
@@ -98,6 +99,7 @@ type NodeInput struct {
 	Type          string
 	Name          string
 	ToolID        string
+	HostIDs       []string
 	Mapping       map[string]Mapping
 	TimeoutSec    int
 	RetryCount    int
@@ -141,6 +143,20 @@ func validCondition(cond string) bool {
 		return true
 	}
 	return false
+}
+
+func normalizeHostIDs(ids []string) []string {
+	out := make([]string, 0, len(ids))
+	seen := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		id = strings.TrimSpace(id)
+		if id == "" || seen[id] {
+			continue
+		}
+		seen[id] = true
+		out = append(out, id)
+	}
+	return out
 }
 
 func validateInput(in *Input) error {
@@ -203,6 +219,9 @@ func validateInput(in *Input) error {
 			if n.ToolID != "" {
 				return invalid("开始节点不能绑定工具")
 			}
+			if len(n.HostIDs) > 0 {
+				return invalid("开始节点不能设置执行主机")
+			}
 		case NodeTool:
 			toolCount++
 			n.Name = strings.TrimSpace(n.Name)
@@ -214,6 +233,15 @@ func validateInput(in *Input) error {
 			}
 			if n.ToolID == "" {
 				return invalid(fmt.Sprintf("节点 %q 未选择工具", n.Name))
+			}
+			n.HostIDs = normalizeHostIDs(n.HostIDs)
+			if len(n.HostIDs) > 100 {
+				return invalid(fmt.Sprintf("节点 %q 的执行主机不能超过 100 台", n.Name))
+			}
+			for _, hostID := range n.HostIDs {
+				if len(hostID) > 64 {
+					return invalid(fmt.Sprintf("节点 %q 包含非法的执行主机", n.Name))
+				}
 			}
 			if n.TimeoutSec < 0 || n.TimeoutSec > 86400 {
 				return invalid(fmt.Sprintf("节点 %q 的超时取值范围为 0-86400 秒", n.Name))

@@ -16,6 +16,7 @@ import (
 type fixture struct {
 	svc    *Service
 	tools  *tool.Service
+	flows  *flow.Service
 	store  *store.Store
 	hostID string
 	toolID string
@@ -59,7 +60,7 @@ func newFixture(t *testing.T) *fixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return &fixture{svc: svc, tools: tools, store: st, hostID: hostID, toolID: detail.ID}
+	return &fixture{svc: svc, tools: tools, flows: flows, store: st, hostID: hostID, toolID: detail.ID}
 }
 
 func baseInput(f *fixture) Input {
@@ -153,6 +154,60 @@ func TestValidation(t *testing.T) {
 		if _, err := f.svc.Create(ctx, in, "admin"); err == nil {
 			t.Fatalf("%s: expected error", name)
 		}
+	}
+}
+
+func TestFlowScheduleHostsFollowNodeConfiguration(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	createFlow := func(name string, nodeHosts []string) string {
+		t.Helper()
+		d, err := f.flows.Create(ctx, flow.Input{
+			Name: name, MaxDurationSec: 600,
+			Nodes: []flow.NodeInput{
+				{ID: "start", Type: "start", Name: "开始"},
+				{ID: "n1", Type: "tool", Name: "run", ToolID: f.toolID, HostIDs: nodeHosts},
+			},
+			Edges: []flow.EdgeInput{{From: "start", To: "n1", Condition: flow.CondAlways}},
+		}, "admin")
+		if err != nil {
+			t.Fatal(err)
+		}
+		return d.ID
+	}
+
+	configured := createFlow("configured", []string{f.hostID})
+	in := baseInput(f)
+	in.Name = "flow-configured"
+	in.TargetKind = "flow"
+	in.TargetRefID = configured
+	in.Params = nil
+	in.HostIDs = nil
+	if _, err := f.svc.Create(ctx, in, "admin"); err != nil {
+		t.Fatalf("flow with all nodes configured should allow empty default hosts: %v", err)
+	}
+
+	unconfigured := createFlow("unconfigured", nil)
+	in = baseInput(f)
+	in.Name = "flow-unconfigured"
+	in.TargetKind = "flow"
+	in.TargetRefID = unconfigured
+	in.Params = nil
+	in.HostIDs = nil
+	if _, err := f.svc.Create(ctx, in, "admin"); err == nil {
+		t.Fatal("flow with unconfigured node should require default hosts")
+	}
+
+	in.HostIDs = []string{f.hostID}
+	if _, err := f.svc.Create(ctx, in, "admin"); err != nil {
+		t.Fatalf("flow with default hosts should pass: %v", err)
+	}
+
+	in = baseInput(f)
+	in.Name = "tool-no-host"
+	in.HostIDs = nil
+	if _, err := f.svc.Create(ctx, in, "admin"); err == nil {
+		t.Fatal("tool schedule without hosts should fail")
 	}
 }
 
