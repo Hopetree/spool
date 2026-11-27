@@ -70,6 +70,7 @@ export default function ToolEditor() {
 
   const [form] = Form.useForm<FormValues>();
   const scriptType = (Form.useWatch("type", form) ?? "shell") as ToolType;
+  const toolName = Form.useWatch("name", form) as string | undefined;
 
   const { data: detail } = useQuery({
     queryKey: ["tool", id],
@@ -212,7 +213,13 @@ export default function ToolEditor() {
 
         <Card title="脚本" style={{ marginBottom: 16 }}>
           <Form.Item name="content" label="脚本内容" rules={[{ required: true, message: "请输入脚本内容" }]}>
-            <CodeEditor language={scriptType} readOnly={!isAdmin} />
+            <CodeEditor
+              language={scriptType}
+              readOnly={!isAdmin}
+              downloadName={
+                toolName ? `${toolName}.${scriptType === "python" ? "py" : "sh"}` : undefined
+              }
+            />
           </Form.Item>
           <Form.Item name="prepare_command" label="准备命令（可选）" extra="在脚本前执行，失败则中止；与脚本同一日志。">
             <Input.TextArea
