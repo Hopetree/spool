@@ -23,6 +23,7 @@ import {
   type StepRun,
 } from "../api/executions";
 import { ApiError } from "../api/client";
+import { getFlow } from "../api/flows";
 import { listTools } from "../api/tools";
 import ExecutionGraph from "../components/ExecutionGraph";
 import ExecuteToolModal from "../components/ExecuteToolModal";
@@ -104,6 +105,19 @@ export default function ExecutionDetail() {
   });
   const sourceLabel =
     data?.source === "manual" ? "手动" : data?.source === "schedule" ? "定时任务" : data?.source || "—";
+  const { data: flowDetail } = useQuery({
+    queryKey: ["flow", data?.ref_id, "execution-detail"],
+    queryFn: () => getFlow(data!.ref_id),
+    enabled: data?.kind === "flow" && !!data.ref_id,
+  });
+  const displayParams = useMemo(() => {
+    if (!data) return {};
+    if (data.kind !== "flow") return data.params;
+    const hostNames = new Set(
+      (flowDetail?.params ?? []).filter((param) => param.type === "host").map((param) => param.name),
+    );
+    return Object.fromEntries(Object.entries(data.params).filter(([name]) => !hostNames.has(name)));
+  }, [data, flowDetail]);
   const toolHosts: ToolRunHost[] = (data?.host_runs ?? []).map((run) => {
     const step = stepByHost.get(run.id);
     return {
@@ -277,7 +291,7 @@ export default function ExecutionDetail() {
           startedAt={data.started_at}
           finishedAt={data.finished_at}
           sourceLabel={sourceLabel}
-          params={data.params}
+          params={displayParams}
           summary={data.error_summary}
           hosts={toolHosts}
         />
