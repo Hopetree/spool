@@ -250,13 +250,17 @@ func deleteHostHandler(d Deps) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		u := currentUser(c)
 		id := c.Param("id")
+		hostName := ""
+		if h, err := d.Hosts.Get(c.Request.Context(), id); err == nil {
+			hostName = h.Name
+		}
 		if err := d.Hosts.Delete(c.Request.Context(), id); err != nil {
 			writeHostError(c, err)
 			return
 		}
 		writeAudit(c, d, audit.Entry{
 			ActorID: u.ID, ActorName: u.Username, Action: "host.delete",
-			ResourceType: "host", ResourceID: id,
+			ResourceType: "host", ResourceID: id, ResourceName: hostName,
 		})
 		c.Status(http.StatusNoContent)
 	}
@@ -265,19 +269,24 @@ func deleteHostHandler(d Deps) gin.HandlerFunc {
 func testHostHandler(d Deps) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		u := currentUser(c)
-		res, err := d.Hosts.Test(c.Request.Context(), c.Param("id"))
+		id := c.Param("id")
+		hostName := ""
+		if h, err := d.Hosts.Get(c.Request.Context(), id); err == nil {
+			hostName = h.Name
+		}
+		res, err := d.Hosts.Test(c.Request.Context(), id)
 		if err != nil {
 			summary := map[string]any{"ok": false, "error": err.Error()}
 			writeAudit(c, d, audit.Entry{
 				ActorID: u.ID, ActorName: u.Username, Action: "host.test",
-				ResourceType: "host", ResourceID: c.Param("id"), Summary: summary,
+				ResourceType: "host", ResourceID: id, ResourceName: hostName, Summary: summary,
 			})
 			writeHostTestError(c, err)
 			return
 		}
 		writeAudit(c, d, audit.Entry{
 			ActorID: u.ID, ActorName: u.Username, Action: "host.test",
-			ResourceType: "host", ResourceID: c.Param("id"),
+			ResourceType: "host", ResourceID: id, ResourceName: hostName,
 			Summary: map[string]any{"ok": true, "fingerprint_recorded": res.FingerprintRecorded},
 		})
 		ok(c, res)

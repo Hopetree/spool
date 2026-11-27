@@ -61,12 +61,14 @@ const actionLabels: Record<string, string> = {
 
 const resourceLabels: Record<string, string> = {
   host: "主机",
+  host_group: "主机分组",
   credential: "凭据",
   group: "分组",
   tool: "工具",
   flow: "流程",
   execution: "执行",
   schedule: "定时任务",
+  notify_channel: "通知渠道",
   notify: "通知渠道",
   user: "用户",
   transfer: "传输",

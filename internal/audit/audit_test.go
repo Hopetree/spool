@@ -84,3 +84,26 @@ func TestListPagination(t *testing.T) {
 		t.Fatalf("total=%d len=%d", total, len(recs))
 	}
 }
+
+func TestListFillsMissingHostResourceName(t *testing.T) {
+	svc, st := newTestAudit(t)
+	ctx := context.Background()
+	if _, err := st.DB.Exec(`INSERT INTO credentials (id, name, auth_type, username, secret_enc, created_at, updated_at)
+		VALUES ('c1', 'cred', 'password', 'root', ?, 0, 0)`, []byte{0}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.DB.Exec(`INSERT INTO hosts (id, name, address, port, credential_id, created_at, updated_at)
+		VALUES ('h1', 'web-1', '10.0.0.1', 22, 'c1', 0, 0)`); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.Write(ctx, Entry{Action: "host.test", ResourceType: "host", ResourceID: "h1"}); err != nil {
+		t.Fatal(err)
+	}
+	recs, _, err := svc.List(ctx, Filter{Action: "host.test", Page: 1, PageSize: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(recs) != 1 || recs[0].ResourceName != "web-1" {
+		t.Fatalf("records = %+v", recs)
+	}
+}

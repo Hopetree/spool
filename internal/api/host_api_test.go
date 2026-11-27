@@ -130,6 +130,13 @@ func TestHostTestApi(t *testing.T) {
 	if e.auditCount(t, "host.test") != 1 {
 		t.Fatal("host.test audit missing")
 	}
+	var auditResource string
+	if err := e.store.DB.Get(&auditResource, `SELECT resource_name FROM audit_logs WHERE action = 'host.test' LIMIT 1`); err != nil {
+		t.Fatal(err)
+	}
+	if auditResource != "web-1" {
+		t.Fatalf("host.test audit resource = %q", auditResource)
+	}
 }
 
 func TestHostTestHostKeyMismatch(t *testing.T) {

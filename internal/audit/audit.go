@@ -121,9 +121,25 @@ func (s *Service) List(ctx context.Context, f Filter) ([]Record, int64, error) {
 
 	args = append(args, f.PageSize, (f.Page-1)*f.PageSize)
 	rows := []Record{}
-	err := s.db.SelectContext(ctx, &rows, `SELECT id, ts, user_id, username_snapshot, action, resource_type,
-		resource_id, resource_name, summary_json, ip, user_agent
-		FROM audit_logs WHERE `+cond+` ORDER BY ts DESC, id DESC LIMIT ? OFFSET ?`, args...)
+	// Older records (especially host connectivity tests) stored only the
+	// resource ID. Fall back to the current resource name when the snapshot is
+	// empty so the audit page does not show opaque IDs.
+	err := s.db.SelectContext(ctx, &rows, `SELECT a.id, a.ts, a.user_id, a.username_snapshot, a.action, a.resource_type,
+		a.resource_id,
+		COALESCE(NULLIF(a.resource_name, ''), CASE a.resource_type
+			WHEN 'host' THEN (SELECT name FROM hosts WHERE id = a.resource_id)
+			WHEN 'host_group' THEN (SELECT name FROM host_groups WHERE id = a.resource_id)
+			WHEN 'credential' THEN (SELECT name FROM credentials WHERE id = a.resource_id)
+			WHEN 'tool' THEN (SELECT name FROM tools WHERE id = a.resource_id)
+			WHEN 'flow' THEN (SELECT name FROM flows WHERE id = a.resource_id)
+			WHEN 'execution' THEN (SELECT name_snapshot FROM executions WHERE id = a.resource_id)
+			WHEN 'schedule' THEN (SELECT name FROM schedules WHERE id = a.resource_id)
+			WHEN 'notify_channel' THEN (SELECT name FROM notify_channels WHERE id = a.resource_id)
+			WHEN 'user' THEN (SELECT username FROM users WHERE id = a.resource_id)
+			WHEN 'transfer' THEN (SELECT file_name FROM transfers WHERE id = a.resource_id)
+		END, '') AS resource_name,
+		a.summary_json, a.ip, a.user_agent
+		FROM audit_logs a WHERE `+cond+` ORDER BY a.ts DESC, a.id DESC LIMIT ? OFFSET ?`, args...)
 	if err != nil {
 		return nil, 0, fmt.Errorf("list audit: %w", err)
 	}
