@@ -22,7 +22,7 @@ func TestEnvarsApi(t *testing.T) {
 	}
 
 	body := map[string]any{
-		"name": "APP_URL", "value": "http://demo", "description": "demo", "sensitive": false,
+		"name": "SP_APP_URL", "value": "http://demo", "description": "demo", "sensitive": false,
 	}
 	w = e.do(t, http.MethodPost, "/api/v1/envars", body, admin)
 	if w.Code != http.StatusOK {
@@ -31,7 +31,7 @@ func TestEnvarsApi(t *testing.T) {
 	var created map[string]any
 	_ = json.Unmarshal(w.Body.Bytes(), &created)
 	id := created["id"].(string)
-	if created["name"] != "APP_URL" || created["sensitive"] != false {
+	if created["name"] != "SP_APP_URL" || created["sensitive"] != false {
 		t.Fatalf("created = %+v", created)
 	}
 
@@ -41,7 +41,7 @@ func TestEnvarsApi(t *testing.T) {
 	}
 
 	w = e.do(t, http.MethodPut, "/api/v1/envars/"+id, map[string]any{
-		"name": "APP_URL", "value": "", "description": "updated", "sensitive": true,
+		"name": "SP_APP_URL", "value": "", "description": "updated", "sensitive": true,
 	}, admin)
 	if w.Code != http.StatusOK {
 		t.Fatalf("update status = %d, body = %s", w.Code, w.Body.String())
@@ -60,10 +60,26 @@ func TestEnvarsApi(t *testing.T) {
 	if len(list.Items) != 1 {
 		t.Fatalf("items = %+v", list.Items)
 	}
-	for key := range list.Items[0] {
-		if key == "value" || key == "value_enc" {
-			t.Fatalf("response leaked value field %q", key)
-		}
+	if list.Items[0]["name"] != "SP_APP_URL" {
+		t.Fatalf("items = %+v", list.Items)
+	}
+
+	w = e.do(t, http.MethodGet, "/api/v1/envars/"+id+"/value", nil, admin)
+	if w.Code != http.StatusOK {
+		t.Fatalf("reveal status = %d, body = %s", w.Code, w.Body.String())
+	}
+	var reveal struct {
+		Value string `json:"value"`
+	}
+	_ = json.Unmarshal(w.Body.Bytes(), &reveal)
+	if reveal.Value != "http://demo" {
+		t.Fatalf("reveal = %+v", reveal)
+	}
+	w = e.do(t, http.MethodPost, "/api/v1/envars", map[string]any{
+		"name": "BAD_NAME", "value": "x", "description": "", "sensitive": false,
+	}, admin)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("invalid name status = %d", w.Code)
 	}
 
 	if w := e.do(t, http.MethodDelete, "/api/v1/envars/"+id, nil, admin); w.Code != http.StatusNoContent {

@@ -25,21 +25,14 @@ func (e *ValidationError) Error() string { return e.Message }
 
 func invalid(msg string) error { return &ValidationError{Message: msg} }
 
-var (
-	envNameRe     = regexp.MustCompile(`^[A-Z_][A-Z0-9_]*$`)
-	reservedNames = map[string]bool{
-		"PATH": true, "HOME": true, "SHELL": true, "USER": true, "LOGNAME": true,
-		"TERM": true, "LANG": true, "LC_ALL": true, "TMPDIR": true, "PWD": true,
-		"OLDPWD": true, "SHLVL": true, "HOSTNAME": true, "LD_PRELOAD": true,
-		"LD_LIBRARY_PATH": true, "PYTHONHOME": true, "PYTHONPATH": true,
-	}
-)
+var envNameRe = regexp.MustCompile(`^SP_[A-Z_]+$`)
 
-// EnvVar is the public view of a platform environment variable. Values are
-// write-only and never returned.
+// EnvVar is the public view of a platform environment variable. Sensitive
+// values are only exposed through RevealValue.
 type EnvVar struct {
 	ID            string `json:"id"`
 	Name          string `json:"name"`
+	Value         string `json:"value,omitempty"`
 	Description   string `json:"description"`
 	Sensitive     bool   `json:"sensitive"`
 	UpdatedAt     int64  `json:"updated_at"`
@@ -68,9 +61,17 @@ type row struct {
 	UpdatedByName string `db:"updated_by_name"`
 }
 
-func (r row) view() EnvVar {
+func (r row) view(cipher *credential.Cipher, revealValue bool) EnvVar {
+	value := ""
+	if revealValue {
+		plain, err := cipher.Decrypt(r.ValueEnc, r.ID)
+		if err != nil {
+			return EnvVar{}
+		}
+		value = string(plain)
+	}
 	return EnvVar{
-		ID: r.ID, Name: r.Name, Description: r.Description, Sensitive: r.Sensitive,
+		ID: r.ID, Name: r.Name, Value: value, Description: r.Description, Sensitive: r.Sensitive,
 		CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt, UpdatedByName: r.UpdatedByName,
 	}
 }
@@ -97,13 +98,7 @@ func validateName(name string) error {
 		return invalid("变量名不能超过 64 个字符")
 	}
 	if !envNameRe.MatchString(name) {
-		return invalid("变量名必须是大写字母、数字和下划线，且以字母或下划线开头")
-	}
-	if strings.HasPrefix(name, "SPOOL_") {
-		return invalid("变量名不能以 SPOOL_ 开头")
-	}
-	if reservedNames[name] {
-		return invalid(fmt.Sprintf("变量名 %q 是保留名称，不能使用", name))
+		return invalid("变量名必须使用统一前缀 SP_，且只能包含大写字母和下划线")
 	}
 	return nil
 }
@@ -140,7 +135,7 @@ func (s *Service) List(ctx context.Context) ([]EnvVar, error) {
 	}
 	out := make([]EnvVar, 0, len(rows))
 	for _, r := range rows {
-		out = append(out, r.view())
+		out = append(out, r.view(s.cipher, !r.Sensitive))
 	}
 	return out, nil
 }
@@ -186,7 +181,7 @@ func (s *Service) Get(ctx context.Context, id string) (*EnvVar, error) {
 		}
 		return nil, fmt.Errorf("get env var: %w", err)
 	}
-	view := r.view()
+	view := r.view(s.cipher, false)
 	return &view, nil
 }
 
@@ -222,6 +217,22 @@ func (s *Service) Update(ctx context.Context, id string, in Input, actorID strin
 	}
 	_ = existing
 	return s.Get(ctx, id)
+}
+
+// RevealValue decrypts and returns one variable value.
+func (s *Service) RevealValue(ctx context.Context, id string) (string, error) {
+	var r row
+	if err := s.db.GetContext(ctx, &r, `SELECT id, name, value_enc FROM platform_env_vars WHERE id=?`, id); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return "", ErrNotFound
+		}
+		return "", fmt.Errorf("get env var: %w", err)
+	}
+	plain, err := s.cipher.Decrypt(r.ValueEnc, r.ID)
+	if err != nil {
+		return "", fmt.Errorf("decrypt env var: %w", err)
+	}
+	return string(plain), nil
 }
 
 // Delete removes an environment variable.

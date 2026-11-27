@@ -90,6 +90,28 @@ func updateEnvarHandler(d Deps) gin.HandlerFunc {
 	}
 }
 
+func revealEnvarHandler(d Deps) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		id := c.Param("id")
+		u := currentUser(c)
+		value, err := d.Envars.RevealValue(c.Request.Context(), id)
+		if err != nil {
+			writeEnvarError(c, err)
+			return
+		}
+		existing, err := d.Envars.Get(c.Request.Context(), id)
+		if err != nil {
+			writeEnvarError(c, err)
+			return
+		}
+		writeAudit(c, d, audit.Entry{
+			ActorID: u.ID, ActorName: u.Username, Action: "envar.reveal",
+			ResourceType: "platform_env", ResourceID: id, ResourceName: existing.Name,
+		})
+		ok(c, gin.H{"value": value})
+	}
+}
+
 func deleteEnvarHandler(d Deps) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		id := c.Param("id")

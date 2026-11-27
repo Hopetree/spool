@@ -30,7 +30,7 @@ func newService(t *testing.T) *Service {
 func TestEnvVarCRUDAndValues(t *testing.T) {
 	svc := newService(t)
 	ctx := context.Background()
-	created, err := svc.Create(ctx, Input{Name: "APP_URL", Value: "http://demo", Description: "demo", Sensitive: false}, "admin")
+	created, err := svc.Create(ctx, Input{Name: "SP_APP_URL", Value: "http://demo", Description: "demo", Sensitive: false}, "admin")
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
@@ -38,11 +38,11 @@ func TestEnvVarCRUDAndValues(t *testing.T) {
 		t.Fatalf("created = %+v", created)
 	}
 	values, err := svc.Values(ctx)
-	if err != nil || values["APP_URL"] != "http://demo" {
+	if err != nil || values["SP_APP_URL"] != "http://demo" {
 		t.Fatalf("values = %v err=%v", values, err)
 	}
 
-	updated, err := svc.Update(ctx, created.ID, Input{Name: "APP_URL", Value: "", Description: "updated", Sensitive: true}, "admin")
+	updated, err := svc.Update(ctx, created.ID, Input{Name: "SP_APP_URL", Value: "", Description: "updated", Sensitive: true}, "admin")
 	if err != nil {
 		t.Fatalf("update: %v", err)
 	}
@@ -50,7 +50,7 @@ func TestEnvVarCRUDAndValues(t *testing.T) {
 		t.Fatalf("updated = %+v", updated)
 	}
 	values, err = svc.Values(ctx)
-	if err != nil || values["APP_URL"] != "http://demo" {
+	if err != nil || values["SP_APP_URL"] != "http://demo" {
 		t.Fatalf("values after blank update = %v err=%v", values, err)
 	}
 
@@ -67,22 +67,46 @@ func TestEnvVarCRUDAndValues(t *testing.T) {
 	}
 }
 
+func TestRevealValue(t *testing.T) {
+	svc := newService(t)
+	ctx := context.Background()
+	created, err := svc.Create(ctx, Input{Name: "SP_SECRET", Value: "hidden", Sensitive: true}, "admin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	list, err := svc.List(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if list[0].Value != "" {
+		t.Fatalf("sensitive value leaked in list: %+v", list[0])
+	}
+	value, err := svc.RevealValue(ctx, created.ID)
+	if err != nil || value != "hidden" {
+		t.Fatalf("reveal = %q err=%v", value, err)
+	}
+	if _, err := svc.RevealValue(ctx, "nope"); err == nil {
+		t.Fatal("expected missing env var to fail")
+	}
+}
+
 func TestEnvVarValidation(t *testing.T) {
 	svc := newService(t)
 	ctx := context.Background()
 	cases := []Input{
 		{Name: "lower", Value: "x"},
-		{Name: "SPOOL_X", Value: "x"},
-		{Name: "PATH", Value: "x"},
-		{Name: "TOO_LONG", Value: strings.Repeat("x", 4097)},
-		{Name: "OK", Value: ""},
+		{Name: "SP_WITH_1", Value: "x"},
+		{Name: "APP_URL", Value: "x"},
+		{Name: "SP_", Value: "x"},
+		{Name: "SP_TOO_LONG", Value: strings.Repeat("x", 4097)},
+		{Name: "SP_OK", Value: ""},
 	}
 	for _, in := range cases {
 		if _, err := svc.Create(ctx, in, "admin"); err == nil {
 			t.Fatalf("%+v: expected error", in)
 		}
 	}
-	in := Input{Name: "OK", Value: "x"}
+	in := Input{Name: "SP_OK", Value: "x"}
 	created, err := svc.Create(ctx, in, "admin")
 	if err != nil {
 		t.Fatal(err)

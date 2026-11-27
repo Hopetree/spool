@@ -3,6 +3,7 @@ import { request } from "./client";
 export interface EnvVar {
   id: string;
   name: string;
+  value?: string;
   description: string;
   sensitive: boolean;
   created_at: number;
@@ -32,6 +33,10 @@ export function createEnvVar(input: EnvVarInput): Promise<EnvVar> {
 
 export function updateEnvVar(id: string, input: EnvVarInput): Promise<EnvVar> {
   return request<EnvVar>("PUT", `/envars/${id}`, input);
+}
+
+export function revealEnvVar(id: string): Promise<{ value: string }> {
+  return request<{ value: string }>("GET", `/envars/${id}/value`);
 }
 
 export function deleteEnvVar(id: string): Promise<void> {

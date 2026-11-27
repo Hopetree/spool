@@ -60,6 +60,7 @@ const actionLabels: Record<string, string> = {
   "envar.create": "新建环境变量",
   "envar.update": "编辑环境变量",
   "envar.delete": "删除环境变量",
+  "envar.reveal": "查看环境变量值",
 };
 
 const actionOptions = Object.entries(actionLabels)

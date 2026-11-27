@@ -98,6 +98,7 @@ func NewRouter(d Deps) *gin.Engine {
 	admin.GET("/envars", listEnvarsHandler(d))
 	admin.POST("/envars", createEnvarHandler(d))
 	admin.PUT("/envars/:id", updateEnvarHandler(d))
+	admin.GET("/envars/:id/value", revealEnvarHandler(d))
 	admin.DELETE("/envars/:id", deleteEnvarHandler(d))
 	admin.GET("/notify-channels", listChannelsHandler(d))
 	admin.POST("/notify-channels", createChannelHandler(d))

@@ -1,11 +1,13 @@
 import { useState } from "react";
-import { App as AntApp, Button, Form, Input, Modal, Switch, Table, Tag } from "antd";
+import { App as AntApp, Button, Form, Input, Modal, Space, Switch, Table, Tag } from "antd";
+import { EyeInvisibleOutlined, EyeOutlined } from "@ant-design/icons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import dayjs from "dayjs";
 import { ApiError } from "../api/client";
 import {
   createEnvVar,
   deleteEnvVar,
+  revealEnvVar,
   listEnvVars,
   updateEnvVar,
   type EnvVar,
@@ -20,6 +22,7 @@ export default function EnVars() {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<EnvVar | null>(null);
   const [form] = Form.useForm<EnvVarInput>();
+  const [revealed, setRevealed] = useState<Record<string, string>>({});
 
   const { data, isLoading } = useQuery({ queryKey: ["envars"], queryFn: listEnvVars });
   const items = data?.items ?? [];
@@ -33,6 +36,14 @@ export default function EnVars() {
       void qc.invalidateQueries({ queryKey: ["envars"] });
     },
     onError: (err) => message.error(err instanceof ApiError ? err.message : "保存失败"),
+  });
+
+  const reveal = useMutation({
+    mutationFn: revealEnvVar,
+    onSuccess: (result, id) => {
+      setRevealed((prev) => ({ ...prev, [id]: result.value }));
+    },
+    onError: (err) => message.error(err instanceof ApiError ? err.message : "获取失败"),
   });
 
   const remove = useMutation({
@@ -83,6 +94,44 @@ export default function EnVars() {
           { title: "变量名", dataIndex: "name" },
           { title: "说明", dataIndex: "description", ellipsis: true },
           {
+            title: "值",
+            ellipsis: true,
+            render: (_, r) => {
+              if (!r.sensitive) return r.value || "—";
+              const value = revealed[r.id];
+              if (value === undefined) {
+                return (
+                  <Space size={6}>
+                    <span style={{ color: "#8c8c8c" }}>******</span>
+                    <Button
+                      type="text"
+                      size="small"
+                      icon={<EyeOutlined />}
+                      onClick={() => reveal.mutate(r.id)}
+                    />
+                  </Space>
+                );
+              }
+              return (
+                <Space size={6}>
+                  <span>{value}</span>
+                  <Button
+                    type="text"
+                    size="small"
+                    icon={<EyeInvisibleOutlined />}
+                    onClick={() =>
+                      setRevealed((prev) => {
+                        const next = { ...prev };
+                        delete next[r.id];
+                        return next;
+                      })
+                    }
+                  />
+                </Space>
+              );
+            },
+          },
+          {
             title: "敏感",
             dataIndex: "sensitive",
             width: 90,
@@ -131,9 +180,9 @@ export default function EnVars() {
             name="name"
             label="变量名"
             rules={[{ required: true, message: "请输入变量名" }]}
-            extra="大写字母、数字和下划线；不能以 SPOOL_ 开头，不能使用 PATH/HOME 等保留名称"
+            extra="必须使用统一前缀 SP_，且只能包含大写字母和下划线"
           >
-            <Input placeholder="APP_URL" disabled={!!editing} />
+            <Input placeholder="SP_APP_URL" disabled={!!editing} />
           </Form.Item>
           <Form.Item
             name="value"
