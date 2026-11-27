@@ -1,6 +1,6 @@
 import { App as AntApp, Button, Card, Form, Input, InputNumber, Select, Space, Switch } from "antd";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { ApiError } from "../api/client";
 import { runAdhoc } from "../api/executions";
 import { listHosts } from "../api/hosts";
@@ -77,11 +77,11 @@ export default function Adhoc() {
         </Card>
 
         <Card
-          title="最近临时命令"
-          style={{ width: 360, flex: "0 0 360px" }}
-          extra={<Link to="/adhoc/history">全部记录</Link>}
+          title="执行历史"
+          style={{ width: 520, flex: "0 0 520px" }}
+          extra={<span style={{ fontSize: 12, color: "#8c8c8c" }}>最近 10 条</span>}
         >
-          <ExecutionMiniList kind="adhoc" limit={6} />
+          <ExecutionMiniList kind="adhoc" limit={10} />
         </Card>
       </div>
     </div>

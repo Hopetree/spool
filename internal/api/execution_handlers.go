@@ -35,6 +35,13 @@ type executionDTO struct {
 	Graph    *executionGraph   `json:"graph,omitempty"`
 }
 
+// executionListDTO is the row shape for execution listings. Ad-hoc runs
+// expose their command snippet so history panels do not just repeat "临时命令".
+type executionListDTO struct {
+	exec.Execution
+	Command string `json:"command,omitempty"`
+}
+
 type executionGraph struct {
 	Nodes []executionGraphNode `json:"nodes"`
 	Edges []executionGraphEdge `json:"edges"`
@@ -146,6 +153,9 @@ func listExecutionsHandler(d Deps) gin.HandlerFunc {
 			where = append(where, "e.schedule_id = ?")
 			args = append(args, v)
 		}
+		if v := c.Query("scheduled"); v == "true" || v == "1" {
+			where = append(where, "e.schedule_id <> ''")
+		}
 		if v := c.Query("created_by"); v != "" {
 			where = append(where, "e.created_by = ?")
 			args = append(args, v)
@@ -182,8 +192,8 @@ func listExecutionsHandler(d Deps) gin.HandlerFunc {
 		}
 		pageArgs := append([]any{}, args...)
 		pageArgs = append(pageArgs, pageSize, (page-1)*pageSize)
-		items := []exec.Execution{}
-		if err := d.Store.DB.SelectContext(c.Request.Context(), &items,
+		rows := []exec.Execution{}
+		if err := d.Store.DB.SelectContext(c.Request.Context(), &rows,
 			`SELECT e.*, COALESCE(u.username, NULLIF(u.display_name, ''),
 				(SELECT a.username_snapshot FROM audit_logs a WHERE a.resource_id = e.id
 				 AND a.action IN ('execution.start', 'execution.rerun') AND a.username_snapshot <> ''
@@ -195,6 +205,16 @@ func listExecutionsHandler(d Deps) gin.HandlerFunc {
 			WHERE `+cond+` ORDER BY e.created_at DESC LIMIT ? OFFSET ?`, pageArgs...); err != nil {
 			fail(c, http.StatusInternalServerError, "internal_error", "查询失败", nil)
 			return
+		}
+		items := make([]executionListDTO, 0, len(rows))
+		for _, row := range rows {
+			item := executionListDTO{Execution: row}
+			if row.Kind == "adhoc" {
+				params := map[string]string{}
+				_ = json.Unmarshal([]byte(row.ParamsJSON), &params)
+				item.Command = params["command"]
+			}
+			items = append(items, item)
 		}
 		ok(c, pageResponse{Items: items, Total: total, Page: page, PageSize: pageSize})
 	}

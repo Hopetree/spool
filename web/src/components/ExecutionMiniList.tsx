@@ -46,21 +46,39 @@ export default function ExecutionMiniList({
           <div style={{ width: "100%", minWidth: 0 }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
               <span
+                title={ex.command || ex.name}
                 style={{
-                  fontWeight: 500,
+                  fontFamily: ex.command ? "Menlo, Consolas, monospace" : undefined,
+                  fontSize: ex.command ? 12 : undefined,
+                  fontWeight: ex.command ? 400 : 500,
                   overflow: "hidden",
                   textOverflow: "ellipsis",
                   whiteSpace: "nowrap",
                 }}
               >
-                {ex.name || ex.id}
+                {ex.command ? ex.command.replace(/\s+/g, " ").slice(0, 80) : ex.name || ex.id}
               </span>
               <ExecutionStatusTag status={ex.status} />
             </div>
             <div style={{ fontSize: 12, color: "#8c8c8c", marginTop: 2 }}>
-              {dayjs(ex.created_at).format("MM-DD HH:mm")} · 主机 {ex.host_success}/{ex.host_total} ·{" "}
-              {duration(ex)}
+              {ex.created_by_name || ex.created_by || "—"} · {dayjs(ex.created_at).format("MM-DD HH:mm")} · 主机{" "}
+              {ex.host_success}/{ex.host_total} · {duration(ex)}
             </div>
+            {ex.error_summary && (
+              <div
+                style={{
+                  fontSize: 12,
+                  color: "#cf1322",
+                  marginTop: 2,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+                title={ex.error_summary}
+              >
+                {ex.error_summary}
+              </div>
+            )}
           </div>
         </List.Item>
       )}

@@ -2,7 +2,6 @@ import { Navigate, Route, Routes } from "react-router-dom";
 import AppLayout from "./components/AppLayout";
 import ProtectedRoute from "./components/ProtectedRoute";
 import Adhoc from "./pages/Adhoc";
-import AdhocHistory from "./pages/AdhocHistory";
 import Audit from "./pages/Audit";
 import Channels from "./pages/Channels";
 import Credentials from "./pages/Credentials";
@@ -19,6 +18,7 @@ import Login from "./pages/Login";
 import Password from "./pages/Password";
 import ScheduleDetail from "./pages/ScheduleDetail";
 import ScheduleEditor from "./pages/ScheduleEditor";
+import ScheduleExecutions from "./pages/ScheduleExecutions";
 import Schedules from "./pages/Schedules";
 import ToolDetail from "./pages/ToolDetail";
 import ToolEditor from "./pages/ToolEditor";
@@ -49,11 +49,12 @@ export default function App() {
           <Route path="executions" element={<Navigate to="/tools/executions" replace />} />
           <Route path="executions/:id" element={<ExecutionDetail />} />
           <Route path="schedules" element={<Schedules />} />
+          <Route path="schedules/executions" element={<ScheduleExecutions />} />
           <Route path="schedules/new" element={<ScheduleEditor />} />
           <Route path="schedules/:id/edit" element={<ScheduleEditor />} />
           <Route path="schedules/:id" element={<ScheduleDetail />} />
           <Route path="adhoc" element={<Adhoc />} />
-          <Route path="adhoc/history" element={<AdhocHistory />} />
+          <Route path="adhoc/history" element={<Navigate to="/adhoc" replace />} />
           <Route path="channels" element={<Channels />} />
           <Route path="files" element={<Files />} />
           <Route path="users" element={<Users />} />

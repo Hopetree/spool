@@ -27,6 +27,7 @@ export interface Execution {
   cancel_requested: boolean;
   created_by: string;
   created_by_name?: string;
+  command?: string;
   created_at: number;
   started_at: number | null;
   finished_at: number | null;
@@ -129,6 +130,7 @@ export interface ExecutionFilters {
   host_id?: string;
   tool_id?: string;
   schedule_id?: string;
+  scheduled?: boolean;
   created_by?: string;
   keyword?: string;
   from?: number;

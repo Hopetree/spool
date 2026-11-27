@@ -109,7 +109,7 @@ export default function ExecutionDetail() {
   });
   const currentHost = data?.host_runs.find((h) => h.id === selectedHost);
   const backPath =
-    data?.kind === "flow" ? "/flows/executions" : data?.kind === "adhoc" ? "/adhoc/history" : "/tools/executions";
+    data?.kind === "flow" ? "/flows/executions" : data?.kind === "adhoc" ? "/adhoc" : "/tools/executions";
 
   const graph = data?.graph;
   // Old plan snapshots do not carry tool names; resolve them for display.
@@ -175,17 +175,10 @@ export default function ExecutionDetail() {
       <PageHeader
         back={{ label: "返回列表", onClick: () => navigate(backPath) }}
         title={data?.name || "执行详情"}
-        subtitle={
-          data ? (
-            <Space size={8}>
-              <ExecutionStatusTag status={data.status} />
-              <span>执行 ID {data.id}</span>
-            </Space>
-          ) : undefined
-        }
+        subtitle={data ? <ExecutionStatusTag status={data.status} /> : undefined}
         crumbs={[
           {
-            title: data?.kind === "flow" ? "流程执行历史" : data?.kind === "adhoc" ? "临时命令历史" : "工具执行历史",
+            title: data?.kind === "flow" ? "流程执行历史" : data?.kind === "adhoc" ? "临时命令" : "工具执行历史",
             to: backPath,
           },
           { title: "执行详情" },

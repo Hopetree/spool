@@ -26,10 +26,10 @@ function selectedKey(pathname: string): string {
     "/tools",
     "/flows/executions",
     "/flows",
-    "/adhoc/history",
     "/adhoc",
     "/hosts",
     "/credentials",
+    "/schedules/executions",
     "/schedules",
     "/files",
     "/users",
@@ -54,8 +54,8 @@ const groupOfKey: Record<string, string> = {
   "/flows": "grp-flows",
   "/flows/executions": "grp-flows",
   "/schedules": "grp-automation",
+  "/schedules/executions": "grp-automation",
   "/adhoc": "grp-automation",
-  "/adhoc/history": "grp-automation",
   "/users": "grp-system",
   "/channels": "grp-system",
   "/audit": "grp-system",
@@ -94,8 +94,8 @@ export default function AppLayout() {
   ];
   const automationChildren: MenuProps["items"] = [
     { key: "/schedules", label: <Link to="/schedules">定时任务</Link> },
+    { key: "/schedules/executions", label: <Link to="/schedules/executions">定时任务历史</Link> },
     { key: "/adhoc", label: <Link to="/adhoc">临时命令</Link> },
-    { key: "/adhoc/history", label: <Link to="/adhoc/history">临时命令历史</Link> },
   ];
   const systemChildren: MenuProps["items"] = [
     { key: "/users", label: <Link to="/users">用户</Link> },
