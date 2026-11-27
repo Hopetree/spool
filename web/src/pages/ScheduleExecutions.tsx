@@ -6,7 +6,7 @@ export default function ScheduleExecutions() {
   return (
     <div>
       <PageHeader
-        title="定时任务执行历史"
+        title="任务历史"
         subtitle="包含定时触发和从定时任务手动触发的执行记录"
       />
       <Card>

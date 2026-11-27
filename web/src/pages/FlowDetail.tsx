@@ -152,7 +152,7 @@ export default function FlowDetail() {
         {detail && <FlowGraph nodes={detail.nodes} edges={detail.edges} height={480} />}
       </Card>
 
-      <Card title="执行历史">{id && <ExecutionTable kind="flow" refID={id} showFilters />}</Card>
+      <Card title="流程历史">{id && <ExecutionTable kind="flow" refID={id} showFilters />}</Card>
 
       <ExecuteFlowModal flowID={id ?? null} open={execOpen} onClose={() => setExecOpen(false)} />
     </div>

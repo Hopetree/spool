@@ -86,15 +86,15 @@ export default function AppLayout() {
   }
   const toolChildren: MenuProps["items"] = [
     { key: "/tools", label: <Link to="/tools">工具列表</Link> },
-    { key: "/tools/executions", label: <Link to="/tools/executions">工具执行历史</Link> },
+    { key: "/tools/executions", label: <Link to="/tools/executions">工具历史</Link> },
   ];
   const flowChildren: MenuProps["items"] = [
     { key: "/flows", label: <Link to="/flows">流程列表</Link> },
-    { key: "/flows/executions", label: <Link to="/flows/executions">流程执行历史</Link> },
+    { key: "/flows/executions", label: <Link to="/flows/executions">流程历史</Link> },
   ];
   const automationChildren: MenuProps["items"] = [
     { key: "/schedules", label: <Link to="/schedules">定时任务</Link> },
-    { key: "/schedules/executions", label: <Link to="/schedules/executions">定时任务历史</Link> },
+    { key: "/schedules/executions", label: <Link to="/schedules/executions">任务历史</Link> },
     { key: "/adhoc", label: <Link to="/adhoc">临时命令</Link> },
   ];
   const systemChildren: MenuProps["items"] = [

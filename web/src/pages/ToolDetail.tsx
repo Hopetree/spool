@@ -380,7 +380,7 @@ export default function ToolDetail() {
           { key: "script", label: "脚本与参数", children: scriptTab },
           {
             key: "history",
-            label: "执行历史",
+            label: "工具历史",
             children: id ? <ExecutionTable kind="tool" refID={id} showFilters /> : <Card>—</Card>,
           },
           { key: "versions", label: "版本列表", children: versionsTab },

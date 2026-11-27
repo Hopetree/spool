@@ -223,7 +223,7 @@ export default function ScheduleDetail() {
         )}
       </Card>
 
-      <Card title="执行历史">
+      <Card title="任务历史">
         {id && <ExecutionTable scheduleID={id} showKind showVersion showFilters />}
       </Card>
     </div>

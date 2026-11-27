@@ -5,7 +5,7 @@ import PageHeader from "../components/PageHeader";
 export default function FlowExecutions() {
   return (
     <div>
-      <PageHeader title="流程执行历史" subtitle="每次运行包含多个主机的节点执行与输出" />
+      <PageHeader title="流程历史" subtitle="每次运行包含多个主机的节点执行与输出" />
       <Card>
         <ExecutionTable kind="flow" showFilters />
       </Card>
