@@ -1,9 +1,153 @@
-import { useState } from "react";
+import { useState, type CSSProperties } from "react";
 import { Card, Input, Space, Table, Tag, Tooltip, Typography } from "antd";
 import { useQuery } from "@tanstack/react-query";
 import PageHeader from "../components/PageHeader";
 import dayjs from "dayjs";
 import { listAudit, type AuditRecord } from "../api/audit";
+
+const actionLabels: Record<string, string> = {
+  login: "登录",
+  login_failed: "登录失败",
+  logout: "退出登录",
+  password_change: "修改密码",
+  "host.create": "新建主机",
+  "host.update": "编辑主机",
+  "host.delete": "删除主机",
+  "host.test": "连通性测试",
+  "host.import": "导入主机",
+  "host.fingerprint_update": "更新主机指纹",
+  "credential.create": "新建凭据",
+  "credential.update": "编辑凭据",
+  "credential.delete": "删除凭据",
+  "group.create": "新建分组",
+  "group.update": "编辑分组",
+  "group.delete": "删除分组",
+  "tool.create": "新建工具",
+  "tool.update": "更新工具",
+  "tool.delete": "删除工具",
+  "tool.enabled": "启停工具",
+  "tool.copy": "克隆工具",
+  "tool.rollback": "回滚版本",
+  "tool.version_delete": "删除版本",
+  "flow.create": "新建流程",
+  "flow.update": "更新流程",
+  "flow.delete": "删除流程",
+  "flow.enabled": "启停流程",
+  "flow.copy": "克隆流程",
+  "execution.start": "发起执行",
+  "execution.cancel": "取消执行",
+  "execution.cancel_host": "取消主机执行",
+  "execution.rerun": "重跑执行",
+  "execution.download": "下载执行日志",
+  "schedule.create": "新建定时任务",
+  "schedule.update": "编辑定时任务",
+  "schedule.delete": "删除定时任务",
+  "schedule.enabled": "启停定时任务",
+  "schedule.trigger": "手动触发任务",
+  "schedule.run": "定时执行任务",
+  "notify.create": "新建通知渠道",
+  "notify.update": "编辑通知渠道",
+  "notify.delete": "删除通知渠道",
+  "notify.test": "测试通知渠道",
+  "user.create": "新建用户",
+  "user.update": "编辑用户",
+  "user.delete": "删除用户",
+  "user.reset_password": "重置密码",
+  "user.logout_all": "强制下线",
+  "transfer.upload": "文件分发",
+  "transfer.download": "文件下载",
+  "transfer.cancel": "取消传输",
+};
+
+const resourceLabels: Record<string, string> = {
+  host: "主机",
+  credential: "凭据",
+  group: "分组",
+  tool: "工具",
+  flow: "流程",
+  execution: "执行",
+  schedule: "定时任务",
+  notify: "通知渠道",
+  user: "用户",
+  transfer: "传输",
+};
+
+const summaryLabels: Record<string, string> = {
+  role: "角色",
+  type: "类型",
+  version: "版本",
+  enabled: "状态",
+  from: "原版本",
+  new_version: "新版本",
+  source: "来源",
+  cron: "计划",
+  target_kind: "目标类型",
+  execution_id: "执行",
+  nodes: "节点",
+  edges: "连线",
+  reason: "原因",
+  address: "地址",
+  port: "端口",
+  created: "新建",
+  failed: "失败",
+  group_id: "分组",
+  ok: "结果",
+  fingerprint_recorded: "记录指纹",
+  fingerprint: "指纹",
+  key_type: "密钥类型",
+  hosts: "主机",
+  remote_dir: "目录",
+  size: "大小",
+  host_id: "主机",
+  path: "路径",
+  auth_type: "认证方式",
+  command: "命令",
+  kind: "类型",
+  ref_id: "引用",
+  source_execution: "源执行",
+  host_run: "主机执行",
+  step_run: "步骤执行",
+  elapsed_ms: "耗时",
+  error: "错误",
+};
+
+const summaryOrder = [
+  "ok",
+  "created",
+  "failed",
+  "error",
+  "kind",
+  "target_kind",
+  "type",
+  "role",
+  "hosts",
+  "command",
+  "remote_dir",
+  "path",
+  "size",
+  "address",
+  "port",
+  "cron",
+  "enabled",
+  "version",
+  "from",
+  "new_version",
+  "reason",
+  "execution_id",
+  "elapsed_ms",
+  "host_id",
+  "auth_type",
+  "source",
+  "ref_id",
+  "source_execution",
+  "host_run",
+  "step_run",
+  "group_id",
+  "fingerprint_recorded",
+  "fingerprint",
+  "key_type",
+];
+const summaryRank = new Map(summaryOrder.map((key, i) => [key, i]));
 
 function pretty(json: string): string {
   try {
@@ -11,6 +155,81 @@ function pretty(json: string): string {
   } catch {
     return json;
   }
+}
+
+function formatBytes(n: number): string {
+  if (n < 1024) return `${n}B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)}KB`;
+  return `${(n / 1024 / 1024).toFixed(1)}MB`;
+}
+
+function formatSummaryValue(key: string, value: unknown): string {
+  if (value === null || value === undefined || value === "") return "—";
+  if (typeof value === "boolean") return value ? "是" : "否";
+  if (key === "role") {
+    return ({ admin: "管理员", operator: "操作员", viewer: "只读" } as Record<string, string>)[String(value)] ?? String(value);
+  }
+  if (key === "kind" || key === "target_kind") {
+    return ({ tool: "工具", flow: "流程", adhoc: "临时命令" } as Record<string, string>)[String(value)] ?? String(value);
+  }
+  if (key === "type") {
+    return (
+      ({
+        shell: "Shell",
+        python: "Python",
+        webhook: "Webhook",
+        feishu: "飞书",
+        dingtalk: "钉钉",
+        wecom: "企业微信",
+      } as Record<string, string>)[String(value)] ?? String(value)
+    );
+  }
+  if (key === "auth_type") {
+    return ({ password: "密码", private_key: "私钥" } as Record<string, string>)[String(value)] ?? String(value);
+  }
+  if (key === "enabled") return value ? "启用" : "停用";
+  if (key === "ok") return value ? "成功" : "失败";
+  if (key === "fingerprint_recorded") return value ? "是" : "否";
+  if (key === "reason") {
+    return (
+      ({
+        invalid_credentials: "用户名或密码错误",
+        disabled: "用户已停用",
+      } as Record<string, string>)[String(value)] ?? String(value)
+    );
+  }
+  if (key === "size" && typeof value === "number") return formatBytes(value);
+  if (key === "elapsed_ms" && typeof value === "number") return `${value}ms`;
+  if (key === "hosts" && typeof value === "number") return `${value} 台`;
+  if (Array.isArray(value)) return value.map(String).join("、");
+  if (typeof value === "object") return JSON.stringify(value);
+  return String(value);
+}
+
+function summaryEntries(json: string): [string, unknown][] {
+  try {
+    const parsed: unknown = JSON.parse(json);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return [];
+    return Object.entries(parsed as Record<string, unknown>).sort(
+      ([a], [b]) => (summaryRank.get(a) ?? summaryOrder.length) - (summaryRank.get(b) ?? summaryOrder.length),
+    );
+  } catch {
+    return [];
+  }
+}
+
+function summaryText(json: string): string {
+  const entries = summaryEntries(json);
+  if (entries.length === 0) return "—";
+  const parts = entries
+    .slice(0, 4)
+    .map(([key, value]) => `${summaryLabels[key] ?? key} ${formatSummaryValue(key, value)}`);
+  if (entries.length > 4) parts.push(`+${entries.length - 4}`);
+  return parts.join(" · ");
+}
+
+function ellipsisStyle(): CSSProperties {
+  return { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 };
 }
 
 export default function Audit() {
@@ -28,8 +247,24 @@ export default function Audit() {
       <PageHeader title="审计日志" subtitle="只读，保留 180 天" />
       <Card size="small" style={{ marginBottom: 16 }} styles={{ body: { padding: 12 } }}>
         <Space wrap>
-          <Input.Search allowClear placeholder="操作，如 host.create" style={{ width: 240 }} onSearch={setAction} />
-          <Input.Search allowClear placeholder="用户 ID" style={{ width: 240 }} onSearch={setActor} />
+          <Input.Search
+            allowClear
+            placeholder="操作代码，如 host.create"
+            style={{ width: 240 }}
+            onSearch={(v) => {
+              setAction(v);
+              setPage(1);
+            }}
+          />
+          <Input.Search
+            allowClear
+            placeholder="用户 ID"
+            style={{ width: 240 }}
+            onSearch={(v) => {
+              setActor(v);
+              setPage(1);
+            }}
+          />
           <Typography.Text type="secondary">审计日志只读，保留 180 天</Typography.Text>
         </Space>
       </Card>
@@ -38,6 +273,8 @@ export default function Audit() {
         size="small"
         loading={isLoading}
         dataSource={data?.items ?? []}
+        tableLayout="fixed"
+        scroll={{ x: 1100 }}
         pagination={{
           current: page,
           pageSize: 20,
@@ -52,34 +289,54 @@ export default function Audit() {
             width: 170,
             render: (v: number) => dayjs(v).format("YYYY-MM-DD HH:mm:ss"),
           },
-          { title: "用户", dataIndex: "username_snapshot", width: 140 },
+          { title: "用户", dataIndex: "username_snapshot", width: 130, ellipsis: true },
           {
             title: "操作",
             dataIndex: "action",
-            width: 190,
-            render: (v: string) => <Tag>{v}</Tag>,
+            width: 150,
+            render: (v: string) => (
+              <Tooltip title={v}>
+                <Tag>{actionLabels[v] ?? v}</Tag>
+              </Tooltip>
+            ),
           },
           {
             title: "资源",
-            width: 220,
-            render: (_, r) => (
-              <Space size={4}>
-                <Tag>{r.resource_type || "—"}</Tag>
-                <span>{r.resource_name || r.resource_id || ""}</span>
-              </Space>
-            ),
+            width: 260,
+            render: (_, r) => {
+              const type = (resourceLabels[r.resource_type] ?? r.resource_type) || "";
+              const name = r.resource_name || r.resource_id;
+              if (!type && !name) return <span style={{ color: "#bfbfbf" }}>—</span>;
+              return (
+                <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+                  {type && (
+                    <Tag style={{ flex: "none", marginInlineEnd: 0 }}>{type}</Tag>
+                  )}
+                  {name ? (
+                    <span title={name} style={{ ...ellipsisStyle(), fontSize: 13 }}>
+                      {name}
+                    </span>
+                  ) : (
+                    <span style={{ color: "#bfbfbf" }}>—</span>
+                  )}
+                </div>
+              );
+            },
           },
           {
             title: "摘要",
             dataIndex: "summary_json",
-            ellipsis: true,
-            render: (v: string) => (
-              <Tooltip title={<pre style={{ margin: 0, whiteSpace: "pre-wrap" }}>{pretty(v)}</pre>}>
-                <span>{v === "{}" ? "—" : v}</span>
-              </Tooltip>
-            ),
+            render: (v: string) => {
+              const text = summaryText(v);
+              if (text === "—") return <span style={{ color: "#bfbfbf" }}>—</span>;
+              return (
+                <Tooltip title={<pre style={{ margin: 0, whiteSpace: "pre-wrap" }}>{pretty(v)}</pre>}>
+                  <span style={{ display: "block", ...ellipsisStyle() }}>{text}</span>
+                </Tooltip>
+              );
+            },
           },
-          { title: "IP", dataIndex: "ip", width: 130 },
+          { title: "IP", dataIndex: "ip", width: 120, ellipsis: true },
         ]}
       />
     </div>
