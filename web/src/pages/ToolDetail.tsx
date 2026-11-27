@@ -389,8 +389,9 @@ export default function ToolDetail() {
       </Card>
 
       <Tabs
-        defaultActiveKey="history"
+        defaultActiveKey="script"
         items={[
+          { key: "script", label: "脚本与参数", children: scriptTab },
           {
             key: "history",
             label: "执行历史",
@@ -398,7 +399,6 @@ export default function ToolDetail() {
           },
           { key: "versions", label: "版本列表", children: versionsTab },
           { key: "references", label: "引用对象", children: referencesTab },
-          { key: "script", label: "脚本与参数", children: scriptTab },
         ]}
       />
 
