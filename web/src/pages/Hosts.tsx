@@ -427,6 +427,7 @@ export default function Hosts() {
               bordered
               size="small"
               column={1}
+              labelStyle={{ width: 140 }}
               items={[
                 { key: "addr", label: "连接地址", children: `${viewing.address}:${viewing.port}` },
                 { key: "group", label: "所属分组", children: viewing.group_name || "未分组" },
@@ -457,6 +458,7 @@ export default function Hosts() {
               bordered
               size="small"
               column={1}
+              labelStyle={{ width: 140 }}
               items={[
                 {
                   key: "probed",
@@ -528,6 +530,7 @@ export default function Hosts() {
               bordered
               size="small"
               column={1}
+              labelStyle={{ width: 140 }}
               items={[
                 {
                   key: "fingerprint",
