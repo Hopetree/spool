@@ -1,9 +1,10 @@
 import { App as AntApp, Button, Card, Form, Input, InputNumber, Select, Space, Switch } from "antd";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { ApiError } from "../api/client";
 import { runAdhoc } from "../api/executions";
 import { listHosts } from "../api/hosts";
+import ExecutionMiniList from "../components/ExecutionMiniList";
 import PageHeader from "../components/PageHeader";
 
 interface FormValues {
@@ -38,7 +39,8 @@ export default function Adhoc() {
         title="临时命令"
         subtitle="不创建工具，直接在一批主机上执行 shell 命令；执行记录与输出同样保留"
       />
-      <Card>
+      <div style={{ display: "flex", gap: 16, alignItems: "flex-start", flexWrap: "wrap" }}>
+        <Card style={{ flex: "1 1 520px", minWidth: 0 }}>
       <Form<FormValues>
         form={form}
         layout="vertical"
@@ -72,7 +74,16 @@ export default function Adhoc() {
           执行
         </Button>
       </Form>
-      </Card>
+        </Card>
+
+        <Card
+          title="最近临时命令"
+          style={{ width: 360, flex: "0 0 360px" }}
+          extra={<Link to="/adhoc/history">全部记录</Link>}
+        >
+          <ExecutionMiniList kind="adhoc" limit={6} />
+        </Card>
+      </div>
     </div>
   );
 }

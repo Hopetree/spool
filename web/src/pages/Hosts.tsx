@@ -5,6 +5,7 @@ import {
   Button,
   Card,
   Descriptions,
+  Drawer,
   Form,
   Input,
   InputNumber,
@@ -14,6 +15,7 @@ import {
   Switch,
   Table,
   Tag,
+  Typography,
 } from "antd";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
@@ -63,6 +65,7 @@ export default function Hosts() {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Host | null>(null);
   const [testResult, setTestResult] = useState<HostTestResult | null>(null);
+  const [viewing, setViewing] = useState<Host | null>(null);
   const [keyIssue, setKeyIssue] = useState<KeyIssue | null>(null);
   const [form] = Form.useForm<HostInput>();
 
@@ -103,8 +106,20 @@ export default function Hosts() {
 
   const test = useMutation({
     mutationFn: testHost,
-    onSuccess: (res) => {
+    onSuccess: (res, hostID) => {
       setTestResult(res);
+      setViewing((prev) =>
+        prev && prev.id === hostID
+          ? {
+              ...prev,
+              capability: res.capability,
+              fingerprint: res.fingerprint,
+              fingerprint_type: res.key_type,
+              last_test_at: Date.now(),
+              last_test_ok: res.ok,
+            }
+          : prev,
+      );
       void qc.invalidateQueries({ queryKey: ["hosts"] });
     },
     onError: (err, hostID) => {
@@ -219,7 +234,11 @@ export default function Hosts() {
         dataSource={hosts}
         pagination={{ current: page, pageSize: 20, onChange: setPage, showSizeChanger: false }}
         columns={[
-          { title: "名称", dataIndex: "name" },
+          {
+            title: "名称",
+            dataIndex: "name",
+            render: (v: string, r) => <a onClick={() => setViewing(r)}>{v}</a>,
+          },
           {
             title: "地址",
             render: (_, r) => `${r.address}:${r.port}`,
@@ -286,6 +305,183 @@ export default function Hosts() {
           },
         ]}
       />
+
+      <Drawer
+        open={!!viewing}
+        onClose={() => setViewing(null)}
+        width={560}
+        title={viewing ? <Space>{viewing.name}<Tag>{viewing.enabled ? "启用" : "停用"}</Tag></Space> : "主机详情"}
+        extra={
+          viewing && (
+            <Space>
+              {canOperate && (
+                <Button
+                  loading={test.isPending && test.variables === viewing.id}
+                  onClick={() => test.mutate(viewing.id)}
+                >
+                  测试连接
+                </Button>
+              )}
+              {isAdmin && (
+                <Button
+                  onClick={() => {
+                    const host = viewing;
+                    setViewing(null);
+                    openEdit(host);
+                  }}
+                >
+                  编辑
+                </Button>
+              )}
+            </Space>
+          )
+        }
+      >
+        {viewing && (
+          <Space direction="vertical" size={16} style={{ width: "100%" }}>
+            <Descriptions
+              title="基本信息"
+              bordered
+              size="small"
+              column={1}
+              items={[
+                { key: "addr", label: "连接地址", children: `${viewing.address}:${viewing.port}` },
+                { key: "group", label: "所属分组", children: viewing.group_name || "未分组" },
+                {
+                  key: "tags",
+                  label: "标签",
+                  children: viewing.tags.length ? (
+                    <Space wrap size={4}>
+                      {viewing.tags.map((t) => (
+                        <Tag key={t}>{t}</Tag>
+                      ))}
+                    </Space>
+                  ) : (
+                    "—"
+                  ),
+                },
+                ...(isAdmin
+                  ? [{ key: "credential", label: "登录凭据", children: viewing.credential_name || "—" }]
+                  : []),
+                { key: "note", label: "备注", children: viewing.note || "—" },
+                { key: "created", label: "创建时间", children: dayjs(viewing.created_at).format("YYYY-MM-DD HH:mm") },
+                { key: "updated", label: "更新时间", children: dayjs(viewing.updated_at).format("YYYY-MM-DD HH:mm") },
+              ]}
+            />
+
+            <Descriptions
+              title="系统与能力"
+              bordered
+              size="small"
+              column={1}
+              items={[
+                {
+                  key: "probed",
+                  label: "探测时间",
+                  children: viewing.capability.probed_at
+                    ? dayjs(viewing.capability.probed_at).format("YYYY-MM-DD HH:mm:ss")
+                    : "尚未探测",
+                },
+                {
+                  key: "os",
+                  label: "操作系统",
+                  children: viewing.capability.distro || viewing.capability.os || "—",
+                },
+                {
+                  key: "kernel",
+                  label: "内核 / 架构",
+                  children: viewing.capability.kernel
+                    ? `${viewing.capability.kernel} / ${viewing.capability.arch || "—"}`
+                    : "—",
+                },
+                { key: "user", label: "登录用户", children: viewing.capability.user || "—" },
+                {
+                  key: "bash",
+                  label: "Bash",
+                  children: viewing.capability.bash_path
+                    ? `${viewing.capability.bash_path} ${viewing.capability.bash_version || ""}`.trim()
+                    : "—",
+                },
+                {
+                  key: "python",
+                  label: "Python",
+                  children: viewing.capability.python_path
+                    ? `${viewing.capability.python_path} ${viewing.capability.python_version || ""}`.trim()
+                    : "—",
+                },
+                {
+                  key: "caps",
+                  label: "能力",
+                  children: viewing.capability.probed_at ? (
+                    <Space wrap size={4}>
+                      {(
+                        [
+                          ["sftp", "SFTP"],
+                          ["sudo", "sudo"],
+                          ["setsid", "setsid"],
+                          ["timeout", "timeout"],
+                        ] as const
+                      ).map(([key, label]) => (
+                        <Tag key={key} color={viewing.capability[key] ? "green" : undefined}>
+                          {label}
+                          {viewing.capability[key] ? "" : "（不支持）"}
+                        </Tag>
+                      ))}
+                    </Space>
+                  ) : (
+                    "—"
+                  ),
+                },
+                {
+                  key: "latency",
+                  label: "探测延迟",
+                  children: viewing.capability.probed_at ? `${viewing.capability.latency_ms} ms` : "—",
+                },
+              ]}
+            />
+
+            <Descriptions
+              title="安全与状态"
+              bordered
+              size="small"
+              column={1}
+              items={[
+                {
+                  key: "fingerprint",
+                  label: "主机指纹",
+                  children: viewing.fingerprint ? (
+                    <Typography.Text code copyable={{ text: viewing.fingerprint }}>
+                      {viewing.fingerprint}
+                    </Typography.Text>
+                  ) : (
+                    <Tag color="orange">待确认</Tag>
+                  ),
+                },
+                { key: "keytype", label: "密钥类型", children: viewing.fingerprint_type || "—" },
+                {
+                  key: "trust",
+                  label: "信任状态",
+                  children: viewing.fingerprint ? <Tag color="green">已信任</Tag> : <Tag color="orange">待确认</Tag>,
+                },
+                {
+                  key: "lasttest",
+                  label: "最近测试",
+                  children: viewing.last_test_at ? (
+                    <Space size={6}>
+                      {dayjs(viewing.last_test_at).format("YYYY-MM-DD HH:mm:ss")}
+                      <Tag color={viewing.last_test_ok ? "green" : "red"}>
+                        {viewing.last_test_ok ? "通过" : "失败"}
+                      </Tag>
+                    </Space>
+                  ) : (
+                    "—"
+                  ),
+                },
+              ]}
+            />
+          </Space>
+        )}
+      </Drawer>
 
       <Modal
         open={open}
