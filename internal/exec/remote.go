@@ -34,7 +34,7 @@ func ScriptFileName(typ string) string {
 	return "script.sh"
 }
 
-// BuildRunScript renders run.sh: pid file, env loading, prepare command and exec.
+// BuildRunScript renders run.sh: pid file, env loading and exec.
 func BuildRunScript(step Step, scriptName string) []byte {
 	var b strings.Builder
 	b.WriteString("#!/bin/sh\n")
@@ -43,10 +43,6 @@ func BuildRunScript(step Step, scriptName string) []byte {
 	b.WriteString("set -a\n")
 	b.WriteString(". ./.spool-env\n")
 	b.WriteString("set +a\n")
-	if prepare := strings.TrimSpace(step.PrepareCommand); prepare != "" {
-		b.WriteString(prepare)
-		b.WriteString("\n")
-	}
 	interpreter := step.Interpreter
 	if step.Type == "python" {
 		interpreter += " -u"

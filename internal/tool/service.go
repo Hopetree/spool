@@ -43,7 +43,6 @@ type versionRow struct {
 	ParamsJSON      string `db:"params_json"`
 	HostLabel       string `db:"host_label"`
 	HostDefaultJSON string `db:"host_default_ids_json"`
-	PrepareCommand  string `db:"prepare_command"`
 	TimeoutSec      int    `db:"default_timeout_sec"`
 	Sudo            bool   `db:"sudo"`
 	ContentHash     string `db:"content_hash"`
@@ -72,22 +71,21 @@ func (r versionRow) toVersion() (Version, error) {
 		}
 	}
 	return Version{
-		ID:             r.ID,
-		ToolID:         r.ToolID,
-		VersionNo:      r.VersionNo,
-		Type:           r.Type,
-		Interpreter:    r.Interpreter,
-		Content:        r.Content,
-		Params:         params,
-		HostParam:      HostParam{DefaultHostIDs: parseHostDefault(r.HostDefaultJSON)},
-		PrepareCommand: r.PrepareCommand,
-		TimeoutSec:     r.TimeoutSec,
-		Sudo:           r.Sudo,
-		ContentHash:    r.ContentHash,
-		ChangeNote:     r.ChangeNote,
-		CreatedBy:      r.CreatedBy,
-		CreatedByName:  r.CreatedByName,
-		CreatedAt:      r.CreatedAt,
+		ID:            r.ID,
+		ToolID:        r.ToolID,
+		VersionNo:     r.VersionNo,
+		Type:          r.Type,
+		Interpreter:   r.Interpreter,
+		Content:       r.Content,
+		Params:        params,
+		HostParam:     HostParam{DefaultHostIDs: parseHostDefault(r.HostDefaultJSON)},
+		TimeoutSec:    r.TimeoutSec,
+		Sudo:          r.Sudo,
+		ContentHash:   r.ContentHash,
+		ChangeNote:    r.ChangeNote,
+		CreatedBy:     r.CreatedBy,
+		CreatedByName: r.CreatedByName,
+		CreatedAt:     r.CreatedAt,
 	}, nil
 }
 
@@ -227,11 +225,11 @@ func (s *Service) insertVersion(ctx context.Context, tx *sqlx.Tx, toolID string,
 	}
 	id := store.NewULID()
 	_, err = tx.ExecContext(ctx, `INSERT INTO tool_versions
-		(id, tool_id, version_no, type, interpreter, content, params_json, host_default_ids_json, prepare_command,
+		(id, tool_id, version_no, type, interpreter, content, params_json, host_default_ids_json,
 		 default_timeout_sec, sudo, content_hash, change_note, created_by, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		id, toolID, versionNo, in.Type, in.Interpreter, in.Content, paramsJSON,
-		string(hostDefaultJSON), in.PrepareCommand,
+		string(hostDefaultJSON),
 		in.TimeoutSec, in.Sudo, HashContent(in.Content), in.ChangeNote, actorID, s.nowMs())
 	if err != nil {
 		return "", fmt.Errorf("insert version: %w", err)
@@ -416,16 +414,15 @@ func (s *Service) Rollback(ctx context.Context, toolID string, versionNo int, no
 		note = fmt.Sprintf("回滚到 v%d", versionNo)
 	}
 	return s.Update(ctx, toolID, Input{
-		Name:           current.Name,
-		Description:    current.Description,
-		Type:           target.Type,
-		Interpreter:    target.Interpreter,
-		Content:        target.Content,
-		PrepareCommand: target.PrepareCommand,
-		Params:         target.Params,
-		TimeoutSec:     target.TimeoutSec,
-		Sudo:           target.Sudo,
-		ChangeNote:     note,
+		Name:        current.Name,
+		Description: current.Description,
+		Type:        target.Type,
+		Interpreter: target.Interpreter,
+		Content:     target.Content,
+		Params:      target.Params,
+		TimeoutSec:  target.TimeoutSec,
+		Sudo:        target.Sudo,
+		ChangeNote:  note,
 	}, actorID)
 }
 
@@ -448,17 +445,16 @@ func (s *Service) Copy(ctx context.Context, toolID, actorID string) (*Detail, er
 		name = fmt.Sprintf("%s-%d", base, i)
 	}
 	return s.Create(ctx, Input{
-		Name:           name,
-		Category:       src.Category,
-		Description:    src.Description,
-		Type:           src.Version.Type,
-		Interpreter:    src.Version.Interpreter,
-		Content:        src.Version.Content,
-		PrepareCommand: src.Version.PrepareCommand,
-		Params:         src.Version.Params,
-		TimeoutSec:     src.Version.TimeoutSec,
-		Sudo:           src.Version.Sudo,
-		ChangeNote:     fmt.Sprintf("复制自 %s v%d", src.Name, src.Version.VersionNo),
+		Name:        name,
+		Category:    src.Category,
+		Description: src.Description,
+		Type:        src.Version.Type,
+		Interpreter: src.Version.Interpreter,
+		Content:     src.Version.Content,
+		Params:      src.Version.Params,
+		TimeoutSec:  src.Version.TimeoutSec,
+		Sudo:        src.Version.Sudo,
+		ChangeNote:  fmt.Sprintf("复制自 %s v%d", src.Name, src.Version.VersionNo),
 	}, actorID)
 }
 

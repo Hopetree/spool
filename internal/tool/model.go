@@ -72,22 +72,21 @@ type Tool struct {
 
 // Version is an immutable tool revision.
 type Version struct {
-	ID             string    `json:"id"`
-	ToolID         string    `json:"tool_id"`
-	VersionNo      int       `json:"version_no"`
-	Type           string    `json:"type"`
-	Interpreter    string    `json:"interpreter"`
-	Content        string    `json:"content"`
-	Params         []Param   `json:"params"`
-	HostParam      HostParam `json:"host_param"`
-	PrepareCommand string    `json:"prepare_command"`
-	TimeoutSec     int       `json:"timeout_sec"`
-	Sudo           bool      `json:"sudo"`
-	ContentHash    string    `json:"content_hash"`
-	ChangeNote     string    `json:"change_note"`
-	CreatedBy      string    `json:"created_by"`
-	CreatedByName  string    `json:"created_by_name"`
-	CreatedAt      int64     `json:"created_at"`
+	ID            string    `json:"id"`
+	ToolID        string    `json:"tool_id"`
+	VersionNo     int       `json:"version_no"`
+	Type          string    `json:"type"`
+	Interpreter   string    `json:"interpreter"`
+	Content       string    `json:"content"`
+	Params        []Param   `json:"params"`
+	HostParam     HostParam `json:"host_param"`
+	TimeoutSec    int       `json:"timeout_sec"`
+	Sudo          bool      `json:"sudo"`
+	ContentHash   string    `json:"content_hash"`
+	ChangeNote    string    `json:"change_note"`
+	CreatedBy     string    `json:"created_by"`
+	CreatedByName string    `json:"created_by_name"`
+	CreatedAt     int64     `json:"created_at"`
 }
 
 // FlowParams returns the executable host parameter followed by the regular
@@ -118,18 +117,17 @@ type Detail struct {
 
 // Input carries create/update fields.
 type Input struct {
-	Name           string
-	Category       string
-	Description    string
-	Type           string
-	Interpreter    string
-	Content        string
-	PrepareCommand string
-	Params         []Param
-	HostParam      HostParam
-	TimeoutSec     int
-	Sudo           bool
-	ChangeNote     string
+	Name        string
+	Category    string
+	Description string
+	Type        string
+	Interpreter string
+	Content     string
+	Params      []Param
+	HostParam   HostParam
+	TimeoutSec  int
+	Sudo        bool
+	ChangeNote  string
 }
 
 // ListFilter narrows tool list queries.
@@ -377,9 +375,6 @@ func validateInput(in *Input) error {
 	}
 	if len(in.Content) > 1024*1024 {
 		return invalid("脚本内容不能超过 1MB")
-	}
-	if len(in.PrepareCommand) > 4000 {
-		return invalid("准备命令不能超过 4000 个字符")
 	}
 	if in.TimeoutSec == 0 {
 		in.TimeoutSec = 300

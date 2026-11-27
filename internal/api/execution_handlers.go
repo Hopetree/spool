@@ -141,16 +141,15 @@ func splitSensitive(params []tool.Param, values map[string]string) (plain, sensi
 
 func toolSnapshot(detail *tool.Detail) exec.ToolVersionSnapshot {
 	return exec.ToolVersionSnapshot{
-		ToolID:         detail.ID,
-		VersionID:      detail.Version.ID,
-		VersionNo:      detail.Version.VersionNo,
-		ContentHash:    detail.Version.ContentHash,
-		Type:           detail.Version.Type,
-		Interpreter:    detail.Version.Interpreter,
-		Content:        detail.Version.Content,
-		PrepareCommand: detail.Version.PrepareCommand,
-		Sudo:           detail.Version.Sudo,
-		TimeoutSec:     detail.Version.TimeoutSec,
+		ToolID:      detail.ID,
+		VersionID:   detail.Version.ID,
+		VersionNo:   detail.Version.VersionNo,
+		ContentHash: detail.Version.ContentHash,
+		Type:        detail.Version.Type,
+		Interpreter: detail.Version.Interpreter,
+		Content:     detail.Version.Content,
+		Sudo:        detail.Version.Sudo,
+		TimeoutSec:  detail.Version.TimeoutSec,
 	}
 }
 

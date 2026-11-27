@@ -46,7 +46,6 @@ export interface ToolVersion {
   content: string;
   params: ToolParam[];
   host_param: HostParam;
-  prepare_command: string;
   timeout_sec: number;
   sudo: boolean;
   content_hash: string;
@@ -67,7 +66,6 @@ export interface ToolInput {
   type: ToolType;
   interpreter: string;
   content: string;
-  prepare_command: string;
   params: ToolParam[];
   host_param: HostParam;
   timeout_sec: number;

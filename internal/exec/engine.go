@@ -1198,7 +1198,7 @@ func graphNodeStep(n GraphNode) Step {
 	return Step{
 		Index: 1, Name: n.Name, ToolID: n.ToolID, ToolVersionID: n.ToolVersionID,
 		ToolVersionNo: n.ToolVersionNo, ContentHash: n.ContentHash, Type: n.ToolType,
-		Interpreter: n.Interpreter, Content: n.Content, PrepareCommand: n.PrepareCommand,
+		Interpreter: n.Interpreter, Content: n.Content,
 		Sudo: n.Sudo, TimeoutSec: n.TimeoutSec, RetryCount: n.RetryCount,
 		RetryDelaySec: n.RetryDelaySec, Params: n.Params, SensitiveParams: n.SensitiveParams,
 	}

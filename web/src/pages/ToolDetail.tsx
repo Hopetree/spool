@@ -262,19 +262,6 @@ export default function ToolDetail() {
               downloadName={`${detail.name}-v${detail.version.version_no}.${detail.version.type === "python" ? "py" : "sh"}`}
             />
           </div>
-          <Typography.Text type="secondary">准备命令</Typography.Text>
-          <pre
-            style={{
-              margin: "8px 0 16px",
-              padding: 8,
-              background: "#fafafa",
-              borderRadius: 4,
-              fontSize: 12,
-              whiteSpace: "pre-wrap",
-            }}
-          >
-            {detail.version.prepare_command || "（无）"}
-          </pre>
           <Typography.Text type="secondary">执行主机参数</Typography.Text>
           <Descriptions
             size="small"

@@ -46,7 +46,6 @@ interface FormValues {
   type: ToolType;
   interpreter?: string;
   content: string;
-  prepare_command?: string;
   timeout_sec?: number;
   sudo?: boolean;
   change_note?: string;
@@ -99,7 +98,6 @@ export default function ToolEditor() {
       type: detail.version.type,
       interpreter: detail.version.interpreter,
       content: detail.version.content,
-      prepare_command: detail.version.prepare_command,
       timeout_sec: detail.version.timeout_sec,
       sudo: detail.version.sudo,
       change_note: "",
@@ -117,7 +115,6 @@ export default function ToolEditor() {
         type: values.type,
         interpreter: values.interpreter ?? "",
         content: values.content,
-        prepare_command: values.prepare_command ?? "",
         timeout_sec: values.timeout_sec ?? 300,
         sudo: !!values.sudo,
         change_note: values.change_note ?? "",
@@ -231,13 +228,6 @@ export default function ToolEditor() {
               downloadName={
                 toolName ? `${toolName}.${scriptType === "python" ? "py" : "sh"}` : undefined
               }
-            />
-          </Form.Item>
-          <Form.Item name="prepare_command" label="准备命令（可选）" extra="在脚本前执行，失败则中止；与脚本同一日志。">
-            <Input.TextArea
-              autoSize={{ minRows: 2, maxRows: 6 }}
-              style={{ fontFamily: "Menlo, Consolas, monospace", fontSize: 12 }}
-              placeholder="python3 -m venv .venv && . .venv/bin/activate && pip install requests"
             />
           </Form.Item>
         </Card>

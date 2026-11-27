@@ -25,7 +25,6 @@ function basicInfoText(version: ToolVersion): string {
     `解释器: ${version.interpreter || "—"}`,
     `超时: ${version.timeout_sec} 秒`,
     `sudo -n: ${version.sudo ? "是" : "否"}`,
-    `准备命令: ${version.prepare_command || "（无）"}`,
     `变更说明: ${version.change_note || "—"}`,
     `创建人: ${version.created_by_name || version.created_by || "—"}`,
   ];

@@ -34,7 +34,6 @@ type GraphNode struct {
 	ToolType        string            `json:"tool_type,omitempty"`
 	Interpreter     string            `json:"interpreter,omitempty"`
 	Content         string            `json:"content,omitempty"`
-	PrepareCommand  string            `json:"prepare_command,omitempty"`
 	Sudo            bool              `json:"sudo,omitempty"`
 	TimeoutSec      int               `json:"timeout_sec,omitempty"`
 	RetryCount      int               `json:"retry_count,omitempty"`
@@ -64,21 +63,20 @@ type Stage struct {
 
 // Step is one script execution on one host.
 type Step struct {
-	Index          int               `json:"index"`
-	Name           string            `json:"name"`
-	ToolID         string            `json:"tool_id,omitempty"`
-	ToolVersionID  string            `json:"tool_version_id,omitempty"`
-	ToolVersionNo  int               `json:"tool_version_no,omitempty"`
-	ContentHash    string            `json:"content_hash,omitempty"`
-	Type           string            `json:"type"`
-	Interpreter    string            `json:"interpreter"`
-	Content        string            `json:"content"`
-	PrepareCommand string            `json:"prepare_command,omitempty"`
-	Sudo           bool              `json:"sudo"`
-	TimeoutSec     int               `json:"timeout_sec"`
-	RetryCount     int               `json:"retry_count,omitempty"`
-	RetryDelaySec  int               `json:"retry_delay_sec,omitempty"`
-	Params         map[string]string `json:"params,omitempty"`
+	Index         int               `json:"index"`
+	Name          string            `json:"name"`
+	ToolID        string            `json:"tool_id,omitempty"`
+	ToolVersionID string            `json:"tool_version_id,omitempty"`
+	ToolVersionNo int               `json:"tool_version_no,omitempty"`
+	ContentHash   string            `json:"content_hash,omitempty"`
+	Type          string            `json:"type"`
+	Interpreter   string            `json:"interpreter"`
+	Content       string            `json:"content"`
+	Sudo          bool              `json:"sudo"`
+	TimeoutSec    int               `json:"timeout_sec"`
+	RetryCount    int               `json:"retry_count,omitempty"`
+	RetryDelaySec int               `json:"retry_delay_sec,omitempty"`
+	Params        map[string]string `json:"params,omitempty"`
 	// SensitiveParams maps env var names to keys in the execution's encrypted
 	// sensitive value map. Plan JSON never contains the secret values.
 	SensitiveParams map[string]string `json:"sensitive_params,omitempty"`
@@ -102,7 +100,6 @@ func BuildToolPlan(name string, v ToolVersionSnapshot, params, sensitiveParams m
 				Type:            v.Type,
 				Interpreter:     v.Interpreter,
 				Content:         v.Content,
-				PrepareCommand:  v.PrepareCommand,
 				Sudo:            v.Sudo,
 				TimeoutSec:      v.TimeoutSec,
 				Params:          params,
@@ -128,14 +125,13 @@ func BuildAdhocPlan(command string, timeoutSec int, sudo bool) Plan {
 
 // ToolVersionSnapshot is the subset of a tool version needed to build a plan.
 type ToolVersionSnapshot struct {
-	ToolID         string
-	VersionID      string
-	VersionNo      int
-	ContentHash    string
-	Type           string
-	Interpreter    string
-	Content        string
-	PrepareCommand string
-	Sudo           bool
-	TimeoutSec     int
+	ToolID      string
+	VersionID   string
+	VersionNo   int
+	ContentHash string
+	Type        string
+	Interpreter string
+	Content     string
+	Sudo        bool
+	TimeoutSec  int
 }

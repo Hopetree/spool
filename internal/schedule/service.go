@@ -603,7 +603,7 @@ func (s *Service) submit(ctx context.Context, sch *Schedule, source, actorID str
 			ToolID: detail.ID, VersionID: detail.Version.ID, VersionNo: detail.Version.VersionNo,
 			ContentHash: detail.Version.ContentHash, Type: detail.Version.Type,
 			Interpreter: detail.Version.Interpreter, Content: detail.Version.Content,
-			PrepareCommand: detail.Version.PrepareCommand, Sudo: detail.Version.Sudo,
+			Sudo:       detail.Version.Sudo,
 			TimeoutSec: detail.Version.TimeoutSec,
 		}, plain, refs)
 		name = detail.Name

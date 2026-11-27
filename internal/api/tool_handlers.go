@@ -12,34 +12,32 @@ import (
 )
 
 type toolInput struct {
-	Name           string         `json:"name"`
-	Category       string         `json:"category"`
-	Description    string         `json:"description"`
-	Type           string         `json:"type"`
-	Interpreter    string         `json:"interpreter"`
-	Content        string         `json:"content"`
-	PrepareCommand string         `json:"prepare_command"`
-	Params         []tool.Param   `json:"params"`
-	HostParam      tool.HostParam `json:"host_param"`
-	TimeoutSec     int            `json:"timeout_sec"`
-	Sudo           bool           `json:"sudo"`
-	ChangeNote     string         `json:"change_note"`
+	Name        string         `json:"name"`
+	Category    string         `json:"category"`
+	Description string         `json:"description"`
+	Type        string         `json:"type"`
+	Interpreter string         `json:"interpreter"`
+	Content     string         `json:"content"`
+	Params      []tool.Param   `json:"params"`
+	HostParam   tool.HostParam `json:"host_param"`
+	TimeoutSec  int            `json:"timeout_sec"`
+	Sudo        bool           `json:"sudo"`
+	ChangeNote  string         `json:"change_note"`
 }
 
 func (in toolInput) toServiceInput() tool.Input {
 	return tool.Input{
-		Name:           in.Name,
-		Category:       in.Category,
-		Description:    in.Description,
-		Type:           in.Type,
-		Interpreter:    in.Interpreter,
-		Content:        in.Content,
-		PrepareCommand: in.PrepareCommand,
-		Params:         in.Params,
-		HostParam:      in.HostParam,
-		TimeoutSec:     in.TimeoutSec,
-		Sudo:           in.Sudo,
-		ChangeNote:     in.ChangeNote,
+		Name:        in.Name,
+		Category:    in.Category,
+		Description: in.Description,
+		Type:        in.Type,
+		Interpreter: in.Interpreter,
+		Content:     in.Content,
+		Params:      in.Params,
+		HostParam:   in.HostParam,
+		TimeoutSec:  in.TimeoutSec,
+		Sudo:        in.Sudo,
+		ChangeNote:  in.ChangeNote,
 	}
 }
 

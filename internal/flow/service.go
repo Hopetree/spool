@@ -559,7 +559,7 @@ func (s *Service) Compile(ctx context.Context, id string, values map[string]stri
 			ToolID: td.ID, ToolName: td.Name, ToolVersionID: td.Version.ID, ToolVersionNo: td.Version.VersionNo,
 			ContentHash: td.Version.ContentHash, ToolType: td.Version.Type,
 			Interpreter: td.Version.Interpreter, Content: td.Version.Content,
-			PrepareCommand: td.Version.PrepareCommand, Sudo: td.Version.Sudo,
+			Sudo:       td.Version.Sudo,
 			TimeoutSec: timeout, RetryCount: node.RetryCount, RetryDelaySec: node.RetryDelaySec,
 			HostIDs: hostIDs,
 			Params:  nodePlain, SensitiveParams: nodeSensitive,
