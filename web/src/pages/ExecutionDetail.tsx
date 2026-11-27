@@ -31,6 +31,7 @@ import { ApiError } from "../api/client";
 import { listHosts } from "../api/hosts";
 import { listTools } from "../api/tools";
 import ExecutionGraph from "../components/ExecutionGraph";
+import ExecuteToolModal from "../components/ExecuteToolModal";
 import PageHeader from "../components/PageHeader";
 import ExecutionStatusTag from "../components/ExecutionStatusTag";
 import LogViewer from "../components/LogViewer";
@@ -58,6 +59,11 @@ export default function ExecutionDetail() {
   const [hostQuery, setHostQuery] = useState("");
   const [hostStatusFilter, setHostStatusFilter] = useState<string>();
   const [targetsOpen, setTargetsOpen] = useState(false);
+  const [rerunOpen, setRerunOpen] = useState(false);
+  const [rerunInitial, setRerunInitial] = useState<{ hostIDs: string[]; params: Record<string, string> }>({
+    hostIDs: [],
+    params: {},
+  });
   const [selectedNodeID, setSelectedNodeID] = useState<string>();
   const [selectedStepID, setSelectedStepID] = useState<string>();
 
@@ -245,9 +251,25 @@ export default function ExecutionDetail() {
                 </Button>
               </Popconfirm>
             )}
-            <Button onClick={() => rerun.mutate()} loading={rerun.isPending}>
-              重新执行
-            </Button>
+            {data?.kind === "tool" ? (
+              <Button
+                disabled={!data?.ref_id}
+                onClick={() => {
+                  if (!data) return;
+                  setRerunInitial({
+                    hostIDs: data.host_runs.map((run) => run.host_id),
+                    params: data.params,
+                  });
+                  setRerunOpen(true);
+                }}
+              >
+                再次执行
+              </Button>
+            ) : (
+              <Button onClick={() => rerun.mutate()} loading={rerun.isPending} disabled={!data}>
+                重新执行
+              </Button>
+            )}
             <Button href={id ? logDownloadUrl(id) : "#"} target="_blank">
               下载全部日志
             </Button>
@@ -754,6 +776,15 @@ export default function ExecutionDetail() {
           )}
         </>
       )}
+
+      <ExecuteToolModal
+        toolID={data?.kind === "tool" ? data.ref_id : null}
+        open={rerunOpen}
+        onClose={() => setRerunOpen(false)}
+        initialHostIDs={rerunInitial.hostIDs}
+        initialParams={rerunInitial.params}
+        rerun
+      />
 
       <Modal
         open={targetsOpen}

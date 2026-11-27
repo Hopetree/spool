@@ -11,6 +11,9 @@ interface Props {
   toolID: string | null;
   open: boolean;
   onClose: () => void;
+  initialHostIDs?: string[];
+  initialParams?: Record<string, string>;
+  rerun?: boolean;
 }
 
 interface FormValues {
@@ -41,7 +44,14 @@ function paramInput(p: ToolParam): ReactNode {
   return <Input />;
 }
 
-export default function ExecuteToolModal({ toolID, open, onClose }: Props) {
+export default function ExecuteToolModal({
+  toolID,
+  open,
+  onClose,
+  initialHostIDs,
+  initialParams,
+  rerun,
+}: Props) {
   const [form] = Form.useForm<FormValues>();
   const navigate = useNavigate();
   const { message } = AntApp.useApp();
@@ -75,17 +85,21 @@ export default function ExecuteToolModal({ toolID, open, onClose }: Props) {
       if (p.default) defaults[p.name] = p.default;
     });
     form.resetFields();
-    form.setFieldsValue({ params: defaults });
-  }, [open, tool, form]);
+    form.setFieldsValue({
+      host_ids: initialHostIDs ?? [],
+      params: { ...defaults, ...(initialParams ?? {}) },
+    });
+  }, [open, tool, form, initialHostIDs, initialParams]);
 
   const params = tool?.version.params ?? [];
 
   return (
     <Modal
       open={open}
-      title={`执行工具${tool ? `：${tool.name} v${tool.version.version_no}` : ""}`}
+      title={`${rerun ? "再次执行" : "执行"}工具${tool ? `：${tool.name} v${tool.version.version_no}` : ""}`}
       onCancel={onClose}
       onOk={() => form.submit()}
+      okText={rerun ? "再次执行" : "执行"}
       confirmLoading={run.isPending}
       width={640}
       destroyOnClose
