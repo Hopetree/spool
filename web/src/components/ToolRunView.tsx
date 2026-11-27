@@ -270,7 +270,7 @@ export function ToolRunConsole({
             onChange={(event) => setQuery(event.target.value)}
             style={{ marginBottom: 10 }}
           />
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 12 }}>
+          <div style={{ display: "flex", flexWrap: "nowrap", gap: 4, marginBottom: 12 }}>
             {filters.map((filter) => {
               const checked = statusFilter === filter.key;
               return (
@@ -279,22 +279,29 @@ export function ToolRunConsole({
                   title={checked ? "再次点击取消筛选" : `只看${filter.label}的主机`}
                   onClick={() => setStatusFilter(checked ? undefined : filter.key)}
                   style={{
+                    flex: "1 1 0",
+                    minWidth: 0,
                     display: "inline-flex",
                     alignItems: "center",
-                    gap: 6,
-                    padding: "3px 10px",
+                    justifyContent: "center",
+                    gap: 4,
+                    padding: "2px 4px",
                     borderRadius: 14,
                     border: `1px solid ${checked ? filter.color : "#e8e8e8"}`,
                     background: checked ? `${filter.color}14` : "#fafafa",
                     color: checked ? filter.color : "#595959",
                     cursor: "pointer",
-                    fontSize: 12,
-                    lineHeight: "18px",
+                    fontSize: 11,
+                    lineHeight: "16px",
+                    whiteSpace: "nowrap",
                     userSelect: "none",
+                    overflow: "hidden",
                   }}
                 >
-                  <span style={{ width: 6, height: 6, borderRadius: 3, background: filter.color }} />
-                  {filter.label} ({filter.count})
+                  <span style={{ width: 5, height: 5, borderRadius: 3, background: filter.color, flex: "none" }} />
+                  <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>
+                    {filter.label} ({filter.count})
+                  </span>
                 </span>
               );
             })}
