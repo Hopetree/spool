@@ -273,7 +273,7 @@ export default function ToolDetail() {
               language={detail.version.type}
               value={detail.version.content}
               readOnly
-              height="280px"
+              height="500px"
             />
           </div>
           <Typography.Text type="secondary">准备命令</Typography.Text>
