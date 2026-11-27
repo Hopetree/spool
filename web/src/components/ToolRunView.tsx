@@ -8,9 +8,11 @@ import {
   Input,
   Modal,
   Popconfirm,
+  Popover,
   Space,
   Table,
   Tag,
+  Typography,
 } from "antd";
 import { SearchOutlined } from "@ant-design/icons";
 import { useQuery } from "@tanstack/react-query";
@@ -82,6 +84,7 @@ export function ToolRunInfo({
   hosts: ToolRunHost[];
 }) {
   const [targetsOpen, setTargetsOpen] = useState(false);
+  const [paramsOpen, setParamsOpen] = useState(false);
   const { data: hostPage, isLoading } = useQuery({
     queryKey: ["hosts", "execution-targets"],
     queryFn: () => listHosts({ page: 1, page_size: 100 }),
@@ -130,16 +133,39 @@ export function ToolRunInfo({
             },
             {
               key: "params",
-              label: "参数",
+              label: "执行参数",
               children:
                 Object.keys(params).length > 0 ? (
-                  <Space wrap>
-                    {Object.entries(params).map(([key, value]) => (
-                      <Tag key={key}>
-                        {key}={value || "（空）"}
-                      </Tag>
-                    ))}
-                  </Space>
+                  <Popover
+                    trigger="click"
+                    open={paramsOpen}
+                    onOpenChange={setParamsOpen}
+                    placement="left"
+                    styles={{ body: { padding: 12 } }}
+                    content={
+                      <div
+                        style={{
+                          maxWidth: 460,
+                          maxHeight: 320,
+                          overflowY: "auto",
+                          display: "flex",
+                          flexDirection: "column",
+                          gap: 6,
+                        }}
+                      >
+                        {Object.entries(params).map(([key, value]) => (
+                          <div key={key} style={{ fontSize: 12, wordBreak: "break-all" }}>
+                            <Typography.Text strong>{key}</Typography.Text>
+                            <div style={{ color: "#595959" }}>{value || "（空）"}</div>
+                          </div>
+                        ))}
+                      </div>
+                    }
+                  >
+                    <Button type="link" size="small" style={{ padding: 0 }} onClick={() => setParamsOpen(true)}>
+                      查看
+                    </Button>
+                  </Popover>
                 ) : (
                   "—"
                 ),
