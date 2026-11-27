@@ -269,12 +269,7 @@ export default function ToolDetail() {
         <Card title="脚本与参数">
           <Typography.Text type="secondary">脚本内容</Typography.Text>
           <div style={{ marginTop: 8, marginBottom: 16 }}>
-            <CodeEditor
-              language={detail.version.type}
-              value={detail.version.content}
-              readOnly
-              height="500px"
-            />
+            <CodeEditor language={detail.version.type} value={detail.version.content} readOnly />
           </div>
           <Typography.Text type="secondary">准备命令</Typography.Text>
           <pre

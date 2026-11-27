@@ -9,11 +9,19 @@ interface Props {
   value?: string;
   onChange?: (value: string) => void;
   readOnly?: boolean;
-  height?: string;
 }
 
-export default function CodeEditor({ language, value, onChange, readOnly, height = "320px" }: Props) {
+// oneDark at 12px renders lines at 16.8px; 4px content padding top/bottom.
+const lineHeight = 16.8;
+const contentPadding = 8;
+const minEditorHeight = 320;
+const maxVisibleLines = 500;
+
+export default function CodeEditor({ language, value, onChange, readOnly }: Props) {
   const extensions = [language === "python" ? python() : StreamLanguage.define(shell), indentUnit.of("    ")];
+  const lineCount = Math.max(1, (value ?? "").split("\n").length);
+  const visibleLines = Math.min(lineCount, maxVisibleLines);
+  const height = `${Math.max(minEditorHeight, Math.ceil(visibleLines * lineHeight + contentPadding))}px`;
   return (
     <div style={{ border: "1px solid #1f2329", borderRadius: 6, overflow: "hidden" }}>
       <CodeMirror
