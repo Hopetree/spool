@@ -128,13 +128,15 @@ export default function FlowDetail() {
               { key: "duration", label: "最大执行时长", children: `${detail.max_duration_sec}s` },
               {
                 key: "params",
-                label: "流程参数",
+                label: "流程输入",
                 children:
                   detail.params.length > 0 ? (
                     <Space wrap>
                       {detail.params.map((p) => (
                         <Tag key={p.name}>
                           {p.name}
+                          {p.label && p.label !== p.name ? ` · ${p.label}` : ""}
+                          {p.required ? "（必填）" : ""}
                           {p.sensitive ? "（敏感）" : ""}
                         </Tag>
                       ))}

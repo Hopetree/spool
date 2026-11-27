@@ -211,6 +211,49 @@ func TestFlowScheduleHostsFollowNodeConfiguration(t *testing.T) {
 	}
 }
 
+func TestFlowScheduleIgnoresRemovedParameters(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	flowInput := func(mapping map[string]flow.Mapping) flow.Input {
+		return flow.Input{
+			Name: "flow-params", MaxDurationSec: 600,
+			Nodes: []flow.NodeInput{
+				{ID: "start", Type: "start", Name: "开始"},
+				{ID: "n1", Type: "tool", Name: "run", ToolID: f.toolID, HostIDs: []string{f.hostID}, Mapping: mapping},
+			},
+			Edges: []flow.EdgeInput{{From: "start", To: "n1", Condition: flow.CondAlways}},
+		}
+	}
+	d, err := f.flows.Create(ctx, flowInput(map[string]flow.Mapping{
+		"ENV": {Source: "input", InputName: "ENV", InputLabel: "环境"},
+	}), "admin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	in := baseInput(f)
+	in.Name = "flow-param-schedule"
+	in.TargetKind = "flow"
+	in.TargetRefID = d.ID
+	in.Params = map[string]string{"ENV": "prod"}
+	created, err := f.svc.Create(ctx, in, "admin")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Remove the only input from the flow.
+	if _, err := f.flows.Update(ctx, d.ID, flowInput(nil)); err != nil {
+		t.Fatal(err)
+	}
+	in.Params = map[string]string{"ENV": "stale"}
+	updated, err := f.svc.Update(ctx, created.ID, in)
+	if err != nil {
+		t.Fatalf("update schedule after parameter removal: %v", err)
+	}
+	if len(updated.Params) != 0 {
+		t.Fatalf("stale params kept: %v", updated.Params)
+	}
+}
+
 func TestSkipPolicyRecordsSkippedExecution(t *testing.T) {
 	f := newFixture(t)
 	ctx := context.Background()

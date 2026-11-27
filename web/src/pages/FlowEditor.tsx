@@ -12,9 +12,6 @@ import {
   Select,
   Space,
   Steps,
-  Switch,
-  Table,
-  Tag,
   Typography,
 } from "antd";
 import {
@@ -40,10 +37,9 @@ import {
   updateFlow,
   type EdgeCondition,
   type FlowInput,
-  type FlowMapping,
 } from "../api/flows";
 import { listHosts } from "../api/hosts";
-import { listTools, type ToolSummary } from "../api/tools";
+import { listTools } from "../api/tools";
 import {
   edgeConditionOptions,
   flowNodeTypes,
@@ -56,34 +52,16 @@ import {
   type FlowRFEdge,
   type FlowRFNode,
 } from "../components/FlowGraphParts";
+import FlowParamEditor from "../components/FlowParamEditor";
 import PageHeader from "../components/PageHeader";
 import { useAuthStore } from "../stores/auth";
-
-interface ParamForm {
-  name: string;
-  label?: string;
-  type: "string" | "int" | "bool" | "select";
-  required?: boolean;
-  default?: string;
-  optionsText?: string;
-  description?: string;
-  sensitive?: boolean;
-}
 
 interface FormValues {
   name: string;
   category?: string;
   description?: string;
   max_duration_sec?: number;
-  params?: ParamForm[];
 }
-
-const paramTypeOptions = [
-  { value: "string", label: "字符串" },
-  { value: "int", label: "整数" },
-  { value: "bool", label: "布尔" },
-  { value: "select", label: "枚举" },
-];
 
 function newID(prefix: string): string {
   return `${prefix}_${Math.random().toString(36).slice(2, 10)}`;
@@ -102,93 +80,6 @@ function toolNodeData(name = "新节点"): FlowNodeData {
     retryCount: 0,
     retryDelaySec: 0,
   };
-}
-
-function MappingEditor({
-  tool,
-  mapping,
-  flowParams,
-  onChange,
-}: {
-  tool: ToolSummary | undefined;
-  mapping: Record<string, FlowMapping>;
-  flowParams: ParamForm[];
-  onChange: (mapping: Record<string, FlowMapping>) => void;
-}) {
-  if (!tool) {
-    return <Typography.Text type="secondary">请先选择工具</Typography.Text>;
-  }
-  if (tool.params.length === 0) {
-    return <Typography.Text type="secondary">该工具没有参数</Typography.Text>;
-  }
-  const setMapping = (name: string, m?: FlowMapping) => {
-    const next = { ...mapping };
-    if (m) next[name] = m;
-    else delete next[name];
-    onChange(next);
-  };
-  return (
-    <div>
-      {tool.params.map((p) => {
-        const m = mapping[p.name];
-        const source: string = m?.source ?? "default";
-        const eligible = flowParams.filter((fp) => !p.sensitive || fp.sensitive);
-        return (
-          <div
-            key={p.name}
-            style={{ display: "flex", gap: 8, alignItems: "center", padding: "6px 0", borderTop: "1px solid #f0f0f0" }}
-          >
-            <div style={{ width: 150, fontSize: 12 }}>
-              {p.name}
-              {p.sensitive && <Tag color="red" style={{ marginLeft: 4 }}>敏感</Tag>}
-            </div>
-            <Select
-              size="small"
-              style={{ width: 100 }}
-              value={source}
-              onChange={(next: string) => {
-                if (next === "default") return setMapping(p.name);
-                if (next === "flow") return setMapping(p.name, { source: "flow", value: eligible[0]?.name ?? "" });
-                setMapping(p.name, { source: "literal", value: "" });
-              }}
-              options={[
-                { value: "default", label: "默认值" },
-                { value: "flow", label: "流程参数" },
-                { value: "literal", label: "固定值", disabled: p.sensitive },
-              ]}
-            />
-            <div style={{ flex: 1 }}>
-              {source === "flow" && (
-                <Select
-                  size="small"
-                  style={{ width: "100%" }}
-                  value={m?.value || undefined}
-                  placeholder="选择流程参数"
-                  onChange={(v) => setMapping(p.name, { source: "flow", value: v })}
-                  options={eligible.map((fp) => ({
-                    value: fp.name,
-                    label: `${fp.name}${fp.sensitive ? "（敏感）" : ""}`,
-                  }))}
-                />
-              )}
-              {source === "literal" && (
-                <Input
-                  size="small"
-                  value={m?.value ?? ""}
-                  onChange={(e) => setMapping(p.name, { source: "literal", value: e.target.value })}
-                />
-              )}
-              {source === "default" && (
-                <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                  {p.default ? `默认：${p.default}` : p.required ? "必填，必须映射" : "无默认值"}
-                </Typography.Text>
-              )}
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
 }
 
 export default function FlowEditor() {
@@ -227,10 +118,6 @@ export default function FlowEditor() {
   });
   const tools = (toolPage?.items ?? []).filter((t) => t.enabled);
   const hosts = (hostPage?.items ?? []).filter((h) => h.enabled);
-  const hostNameByID = new Map((hostPage?.items ?? []).map((host) => [host.id, host.name]));
-  const watchedParams = Form.useWatch("params", form) as ParamForm[] | undefined;
-  const flowParams = watchedParams ?? [];
-
   useEffect(() => {
     if (detail) {
       form.setFieldsValue({
@@ -238,7 +125,6 @@ export default function FlowEditor() {
         category: detail.category,
         description: detail.description,
         max_duration_sec: detail.max_duration_sec,
-        params: detail.params.map((p) => ({ ...p, optionsText: (p.options ?? []).join(", ") })),
       });
       setNodes(flowToRFNodes(detail.nodes, true));
       setEdges(flowToRFEdges(detail.edges));
@@ -274,7 +160,6 @@ export default function FlowEditor() {
 
   const selectedNode = nodes.find((n) => n.id === selectedNodeID);
   const selectedEdge = edges.find((e) => e.id === selectedEdgeID);
-  const selectedTool = selectedNode ? tools.find((t) => t.id === selectedNode.data.toolID) : undefined;
 
   const updateNodeData = (nodeID: string, patch: Partial<FlowNodeData>) =>
     setNodes((prev) => prev.map((n) => (n.id === nodeID ? { ...n, data: { ...n.data, ...patch } } : n)));
@@ -398,19 +283,6 @@ export default function FlowEditor() {
     category: values.category ?? "",
     description: values.description ?? "",
     max_duration_sec: values.max_duration_sec ?? 3600,
-    params: (values.params ?? []).map((p) => ({
-      name: p.name,
-      label: p.label ?? "",
-      type: p.type,
-      required: !!p.required,
-      default: p.default ?? "",
-      options: (p.optionsText ?? "")
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean),
-      description: p.description ?? "",
-      sensitive: !!p.sensitive,
-    })),
     nodes: nodes.map((n) => ({
       id: n.id,
       type: n.data.kind,
@@ -507,7 +379,7 @@ export default function FlowEditor() {
           setStep(0);
           message.warning("请先完善基本信息");
         }}
-        initialValues={{ max_duration_sec: 3600, params: [] }}
+        initialValues={{ max_duration_sec: 3600 }}
       >
         <div style={{ display: step === 0 ? undefined : "none" }}>
         <Card title="基本信息" style={{ marginBottom: 16 }}>
@@ -537,45 +409,6 @@ export default function FlowEditor() {
           </Form.Item>
         </Card>
 
-        <Card title="流程参数" style={{ marginBottom: 16 }}>
-          <Form.List name="params">
-            {(fields, { add, remove }) => (
-              <>
-                {fields.map(({ key, name, ...rest }) => (
-                  <Space key={key} wrap align="start" style={{ display: "flex", marginBottom: 8 }}>
-                    <Form.Item {...rest} name={[name, "name"]} label="变量名" rules={[{ required: true, message: "必填" }]}>
-                      <Input style={{ width: 130 }} placeholder="ENV" />
-                    </Form.Item>
-                    <Form.Item {...rest} name={[name, "label"]} label="显示名">
-                      <Input style={{ width: 120 }} />
-                    </Form.Item>
-                    <Form.Item {...rest} name={[name, "type"]} label="类型" initialValue="string">
-                      <Select style={{ width: 100 }} options={paramTypeOptions} />
-                    </Form.Item>
-                    <Form.Item {...rest} name={[name, "required"]} label="必填" valuePropName="checked">
-                      <Switch />
-                    </Form.Item>
-                    <Form.Item {...rest} name={[name, "sensitive"]} label="敏感" valuePropName="checked">
-                      <Switch />
-                    </Form.Item>
-                    <Form.Item {...rest} name={[name, "default"]} label="默认值">
-                      <Input style={{ width: 130 }} />
-                    </Form.Item>
-                    <Form.Item {...rest} name={[name, "optionsText"]} label="候选项">
-                      <Input style={{ width: 140 }} placeholder="逗号分隔" />
-                    </Form.Item>
-                    <Button danger style={{ marginTop: 30 }} onClick={() => remove(name)}>
-                      删除
-                    </Button>
-                  </Space>
-                ))}
-                <Button block onClick={() => add({ type: "string", required: false, sensitive: false })}>
-                  添加流程参数
-                </Button>
-              </>
-            )}
-          </Form.List>
-        </Card>
         </div>
 
         {step === 1 && (
@@ -630,56 +463,21 @@ export default function FlowEditor() {
             <Alert
               type="info"
               showIcon
-              message="每个工具节点可单独选择执行主机；留空时使用流程执行时选择的默认主机。点击“配置”可设置主机、超时、重试和参数映射。"
+              message="每个工具参数单独选择来源：工具默认值、固定值、执行时输入，或引用上游节点的参数。执行时输入会自动汇总，同名输入只询问一次。"
               style={{ marginBottom: 12 }}
             />
-            <Table<FlowRFNode>
-              rowKey="id"
-              size="small"
-              pagination={false}
-              dataSource={nodes.filter((node) => node.data.kind === "tool")}
-              locale={{ emptyText: "尚未添加工具节点，请返回“流程设计”添加节点" }}
-              columns={[
-                {
-                  title: "节点",
-                  render: (_, node) => (
-                    <Button type="link" style={{ padding: 0 }} onClick={() => setSelectedNodeID(node.id)}>
-                      {node.data.name || "未命名节点"}
-                    </Button>
-                  ),
-                },
-                {
-                  title: "工具",
-                  render: (_, node) => node.data.toolName || "未选择",
-                  ellipsis: true,
-                },
-                {
-                  title: "执行主机",
-                  ellipsis: true,
-                  render: (_, node) =>
-                    node.data.hostIDs.length > 0
-                      ? node.data.hostIDs.map((id) => hostNameByID.get(id) ?? id).join("、")
-                      : "默认主机",
-                },
-                {
-                  title: "参数映射",
-                  width: 120,
-                  render: (_, node) => {
-                    const tool = tools.find((item) => item.id === node.data.toolID);
-                    if (!tool) return "—";
-                    return `${Object.keys(node.data.mapping).length}/${tool.params.length} 已映射`;
-                  },
-                },
-                {
-                  title: "操作",
-                  width: 80,
-                  render: (_, node) => (
-                    <Button size="small" onClick={() => setSelectedNodeID(node.id)}>
-                      配置
-                    </Button>
-                  ),
-                },
-              ]}
+            <FlowParamEditor
+              nodes={nodes.map((node) => ({
+                id: node.id,
+                kind: node.data.kind,
+                name: node.data.name,
+                toolID: node.data.kind === "start" ? "" : node.data.toolID,
+                mapping: node.data.kind === "start" ? {} : node.data.mapping,
+              }))}
+              edges={edges.map((edge) => ({ from: edge.source, to: edge.target }))}
+              tools={tools}
+              onChange={(nodeID, mapping) => updateNodeData(nodeID, { mapping })}
+              onOpenNode={(nodeID) => setSelectedNodeID(nodeID)}
             />
           </Card>
         )}
@@ -788,13 +586,10 @@ export default function FlowEditor() {
               </div>
             </Space>
             <div>
-              <Typography.Text strong>参数映射</Typography.Text>
-              <MappingEditor
-                tool={selectedTool}
-                mapping={selectedNode.data.mapping}
-                flowParams={flowParams}
-                onChange={(mapping) => updateNodeData(selectedNode.id, { mapping })}
-              />
+              <Typography.Text strong>参数配置</Typography.Text>
+              <div style={{ fontSize: 12, color: "#8c8c8c", marginTop: 4 }}>
+                参数来源与引用已移至第三步“参数设置”，此处只保留主机、超时和重试配置。
+              </div>
             </div>
             <Button danger onClick={() => removeNode(selectedNode.id)}>
               删除节点

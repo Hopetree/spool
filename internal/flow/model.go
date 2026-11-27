@@ -39,10 +39,15 @@ var (
 	envNameRe = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 )
 
-// Mapping maps one tool parameter to a flow parameter or a literal value.
+// Mapping describes where a node parameter value comes from.
 type Mapping struct {
-	Source string `json:"source"` // flow | literal
-	Value  string `json:"value"`
+	Source         string `json:"source"`                    // literal | input | node
+	Value          string `json:"value,omitempty"`           // literal value
+	InputName      string `json:"input_name,omitempty"`      // execution input name
+	InputLabel     string `json:"input_label,omitempty"`     // execution input display label
+	InputSensitive bool   `json:"input_sensitive,omitempty"` // legacy flow parameter sensitivity
+	RefNodeID      string `json:"ref_node_id,omitempty"`     // referenced upstream node
+	RefParam       string `json:"ref_param,omitempty"`       // referenced parameter name
 }
 
 // Node is a start marker or a tool invocation in the flow graph.
@@ -178,9 +183,6 @@ func validateInput(in *Input) error {
 	if in.Params == nil {
 		in.Params = []tool.Param{}
 	}
-	if err := tool.ValidateParams(in.Params); err != nil {
-		return invalid(err.Error())
-	}
 	if in.MaxDurationSec == 0 {
 		in.MaxDurationSec = 3600
 	}
@@ -257,17 +259,33 @@ func validateInput(in *Input) error {
 			}
 			for key, m := range n.Mapping {
 				switch m.Source {
-				case "flow":
-					if !envNameRe.MatchString(m.Value) {
-						return invalid(fmt.Sprintf("节点 %q 的参数 %q 引用了非法的流程参数", n.Name, key))
-					}
 				case "literal":
+					m.Value = strings.TrimSpace(m.Value)
 					if m.Value == "" {
 						return invalid(fmt.Sprintf("节点 %q 的参数 %q 固定值不能为空", n.Name, key))
 					}
+				case "input":
+					m.InputName = strings.TrimSpace(m.InputName)
+					m.InputLabel = strings.TrimSpace(m.InputLabel)
+					if !envNameRe.MatchString(m.InputName) {
+						return invalid(fmt.Sprintf("节点 %q 的参数 %q 输入名不合法", n.Name, key))
+					}
+					if strings.HasPrefix(strings.ToUpper(m.InputName), "SPOOL_") {
+						return invalid(fmt.Sprintf("节点 %q 的参数 %q 输入名不能以 SPOOL_ 开头", n.Name, key))
+					}
+				case "node":
+					m.RefNodeID = strings.TrimSpace(m.RefNodeID)
+					m.RefParam = strings.TrimSpace(m.RefParam)
+					if m.RefNodeID == "" || m.RefParam == "" {
+						return invalid(fmt.Sprintf("节点 %q 的参数 %q 未选择引用节点或参数", n.Name, key))
+					}
+					if m.RefNodeID == n.ID {
+						return invalid(fmt.Sprintf("节点 %q 的参数 %q 不能引用自己", n.Name, key))
+					}
 				default:
-					return invalid(fmt.Sprintf("节点 %q 的参数 %q 映射来源必须是 flow 或 literal", n.Name, key))
+					return invalid(fmt.Sprintf("节点 %q 的参数 %q 来源必须是 literal、input 或 node", n.Name, key))
 				}
+				n.Mapping[key] = m
 			}
 		default:
 			return invalid("节点类型必须是 start 或 tool")

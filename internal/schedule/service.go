@@ -409,6 +409,17 @@ func (s *Service) validate(ctx context.Context, in *Input, existingSensitive map
 			merged[k] = v
 		}
 	}
+	if in.TargetKind == "flow" {
+		// Flow inputs are derived from the current graph; ignore values left
+		// over from parameters that no longer exist.
+		filtered := make(map[string]string, len(decls))
+		for _, p := range decls {
+			if v, ok := merged[p.Name]; ok {
+				filtered[p.Name] = v
+			}
+		}
+		merged = filtered
+	}
 	values, err := tool.ValidateValues(decls, merged)
 	if err != nil {
 		return nil, nil, "", invalid(err.Error())

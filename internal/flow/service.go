@@ -186,64 +186,56 @@ func (s *Service) Get(ctx context.Context, id string) (*Detail, error) {
 			ID: e.ID, From: e.FromKey, To: e.ToKey, Condition: e.Condition, Value: e.ConditionValue,
 		})
 	}
+	normalizeLegacyNodeMappings(&detail)
 	return &detail, nil
 }
 
-func (s *Service) validateTools(ctx context.Context, in Input) error {
-	flowParams := map[string]tool.Param{}
-	for _, p := range in.Params {
-		flowParams[p.Name] = p
-	}
-	for _, node := range in.Nodes {
+func (s *Service) loadNodeTools(ctx context.Context, nodes []NodeInput) (map[string]*tool.Detail, error) {
+	out := make(map[string]*tool.Detail)
+	for _, node := range nodes {
 		if node.Type != NodeTool {
 			continue
 		}
 		td, err := s.tools.Get(ctx, node.ToolID)
 		if errors.Is(err, tool.ErrNotFound) {
-			return invalid(fmt.Sprintf("节点 %q 引用的工具不存在", node.Name))
+			return nil, invalid(fmt.Sprintf("节点 %q 引用的工具不存在", node.Name))
 		}
 		if err != nil {
-			return err
+			return nil, err
 		}
 		if !td.Enabled {
-			return invalid(fmt.Sprintf("节点 %q 引用的工具 %q 已停用", node.Name, td.Name))
+			return nil, invalid(fmt.Sprintf("节点 %q 引用的工具 %q 已停用", node.Name, td.Name))
 		}
-		declared := map[string]tool.Param{}
+		out[node.ID] = td
+	}
+	return out, nil
+}
+
+func validateAndDeriveParams(in *Input, toolsByNode map[string]*tool.Detail) error {
+	for _, node := range in.Nodes {
+		if node.Type != NodeTool {
+			continue
+		}
+		td := toolsByNode[node.ID]
+		declared := make(map[string]bool, len(td.Version.Params))
 		for _, p := range td.Version.Params {
-			declared[p.Name] = p
+			declared[p.Name] = true
 		}
 		for key := range node.Mapping {
-			if _, ok := declared[key]; !ok {
+			if !declared[key] {
 				return invalid(fmt.Sprintf("节点 %q 映射了工具未声明的参数 %q", node.Name, key))
 			}
 		}
-		for _, p := range td.Version.Params {
-			m, ok := node.Mapping[p.Name]
-			if ok {
-				switch m.Source {
-				case "flow":
-					fp, exists := flowParams[m.Value]
-					if !exists {
-						return invalid(fmt.Sprintf("节点 %q 引用了不存在的流程参数 %q", node.Name, m.Value))
-					}
-					if p.Sensitive && !fp.Sensitive {
-						return invalid(fmt.Sprintf("节点 %q 的工具参数 %q 是敏感参数，必须引用敏感的流程参数", node.Name, p.Name))
-					}
-				case "literal":
-					if p.Sensitive {
-						return invalid(fmt.Sprintf("节点 %q 的敏感参数 %q 不能使用固定值", node.Name, p.Name))
-					}
-					if _, err := tool.ValidateValues([]tool.Param{p}, map[string]string{p.Name: m.Value}); err != nil {
-						return invalid(fmt.Sprintf("节点 %q 的参数 %q：%s", node.Name, p.Name, err.Error()))
-					}
-				}
-				continue
-			}
-			if p.Required && p.Default == "" {
-				return invalid(fmt.Sprintf("节点 %q 的工具参数 %q 必填，请配置映射或默认值", node.Name, p.Name))
-			}
-		}
 	}
+	resolver, err := newParamResolver(in.Nodes, in.Edges, toolsByNode)
+	if err != nil {
+		return err
+	}
+	inputs, err := deriveInputs(resolver)
+	if err != nil {
+		return err
+	}
+	in.Params = inputs
 	return nil
 }
 
@@ -298,10 +290,15 @@ func uniqueNameError(err error) error {
 
 // Create inserts a flow graph.
 func (s *Service) Create(ctx context.Context, in Input, actorID string) (*Detail, error) {
+	normalizeLegacyInputMappings(in.Nodes, in.Params)
 	if err := validateInput(&in); err != nil {
 		return nil, err
 	}
-	if err := s.validateTools(ctx, in); err != nil {
+	toolsByNode, err := s.loadNodeTools(ctx, in.Nodes)
+	if err != nil {
+		return nil, err
+	}
+	if err := validateAndDeriveParams(&in, toolsByNode); err != nil {
 		return nil, err
 	}
 	id := store.NewULID()
@@ -332,13 +329,19 @@ func (s *Service) Create(ctx context.Context, in Input, actorID string) (*Detail
 
 // Update replaces the whole graph.
 func (s *Service) Update(ctx context.Context, id string, in Input) (*Detail, error) {
-	if _, err := s.Get(ctx, id); err != nil {
+	existing, err := s.Get(ctx, id)
+	if err != nil {
 		return nil, err
 	}
+	normalizeLegacyInputMappings(in.Nodes, in.Params, existing.Params)
 	if err := validateInput(&in); err != nil {
 		return nil, err
 	}
-	if err := s.validateTools(ctx, in); err != nil {
+	toolsByNode, err := s.loadNodeTools(ctx, in.Nodes)
+	if err != nil {
+		return nil, err
+	}
+	if err := validateAndDeriveParams(&in, toolsByNode); err != nil {
 		return nil, err
 	}
 	tx, err := s.db.BeginTxx(ctx, nil)
@@ -460,17 +463,37 @@ func (s *Service) Compile(ctx context.Context, id string, values map[string]stri
 	if !detail.Enabled {
 		return nil, ErrDisabled
 	}
-	flowValues, err := tool.ValidateValues(detail.Params, values)
+	nodes := nodeInputsFromDetail(detail.Nodes)
+	edges := edgeInputsFromDetail(detail.Edges)
+	toolsByNode, err := s.loadNodeTools(ctx, nodes)
+	if err != nil {
+		return nil, err
+	}
+	resolver, err := newParamResolver(nodes, edges, toolsByNode)
+	if err != nil {
+		return nil, err
+	}
+	inputs, err := deriveInputs(resolver)
+	if err != nil {
+		return nil, err
+	}
+	filtered := make(map[string]string, len(inputs))
+	for _, p := range inputs {
+		if v, ok := values[p.Name]; ok {
+			filtered[p.Name] = v
+		}
+	}
+	flowValues, err := tool.ValidateValues(inputs, filtered)
 	if err != nil {
 		return nil, err
 	}
 	plain := map[string]string{}
 	sensitive := map[string]string{}
-	flowSensitive := map[string]bool{}
-	for _, p := range detail.Params {
+	inputSensitive := make(map[string]bool, len(inputs))
+	for _, p := range inputs {
 		v := flowValues[p.Name]
+		inputSensitive[p.Name] = p.Sensitive
 		if p.Sensitive {
-			flowSensitive[p.Name] = true
 			sensitive[p.Name] = v
 			continue
 		}
@@ -486,49 +509,34 @@ func (s *Service) Compile(ctx context.Context, id string, values map[string]stri
 			})
 			continue
 		}
-		td, err := s.tools.Get(ctx, node.ToolID)
-		if errors.Is(err, tool.ErrNotFound) {
-			return nil, invalid(fmt.Sprintf("节点 %q 引用的工具不存在", node.Name))
-		}
-		if err != nil {
-			return nil, err
-		}
-		if !td.Enabled {
-			return nil, invalid(fmt.Sprintf("节点 %q 引用的工具 %q 已停用", node.Name, td.Name))
-		}
-		resolved := map[string]string{}
-		for _, p := range td.Version.Params {
-			if m, ok := node.Mapping[p.Name]; ok {
-				if m.Source == "flow" {
-					resolved[p.Name] = flowValues[m.Value]
-				} else {
-					resolved[p.Name] = m.Value
-				}
-				continue
-			}
-			if p.Default != "" {
-				resolved[p.Name] = p.Default
-			}
-		}
-		validated, err := tool.ValidateValues(td.Version.Params, resolved)
-		if err != nil {
-			return nil, invalid(fmt.Sprintf("节点 %q 的参数校验失败：%s", node.Name, err.Error()))
-		}
+		td := toolsByNode[node.ID]
 		nodePlain := map[string]string{}
 		nodeSensitive := map[string]string{}
 		for _, p := range td.Version.Params {
-			v := validated[p.Name]
-			secret := p.Sensitive
-			if m, ok := node.Mapping[p.Name]; ok && m.Source == "flow" && flowSensitive[m.Value] {
+			res, err := resolver.resolve(node.ID, p.Name)
+			if err != nil {
+				return nil, err
+			}
+			value := res.Value
+			if res.Kind == "input" {
+				value = flowValues[res.InputName]
+			}
+			validated, err := tool.ValidateValues([]tool.Param{p}, map[string]string{p.Name: value})
+			if err != nil {
+				return nil, invalid(fmt.Sprintf("节点 %q 的参数校验失败：%s", node.Name, err.Error()))
+			}
+			value = validated[p.Name]
+			secret := res.Sensitive
+			if res.Kind == "input" && inputSensitive[res.InputName] {
 				secret = true
 			}
 			if secret {
 				key := fmt.Sprintf("n.%s.%s", node.ID, p.Name)
-				sensitive[key] = v
+				sensitive[key] = value
 				nodeSensitive[p.Name] = key
 				continue
 			}
-			nodePlain[p.Name] = v
+			nodePlain[p.Name] = value
 		}
 		timeout := node.TimeoutSec
 		if timeout == 0 {

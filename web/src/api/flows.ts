@@ -9,10 +9,10 @@ export type EdgeCondition =
   | "output_contains"
   | "output_not_contains";
 
-export interface FlowMapping {
-  source: "flow" | "literal";
-  value: string;
-}
+export type FlowMapping =
+  | { source: "literal"; value: string }
+  | { source: "input"; input_name: string; input_label?: string; input_sensitive?: boolean }
+  | { source: "node"; ref_node_id: string; ref_param: string };
 
 export interface FlowNode {
   id: string;
@@ -82,7 +82,7 @@ export interface FlowInput {
   name: string;
   category: string;
   description: string;
-  params: ToolParam[];
+  params?: ToolParam[];
   max_duration_sec: number;
   nodes: FlowNodeInput[];
   edges: FlowEdgeInput[];
