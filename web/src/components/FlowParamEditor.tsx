@@ -4,6 +4,7 @@ import type { Host } from "../api/hosts";
 import type { ToolParam, ToolSummary } from "../api/tools";
 import {
   compatibleUpstreamParams,
+  defaultInputName,
   inputConflicts,
   toolFlowParams,
   topologicalOrder,
@@ -136,7 +137,7 @@ export default function FlowParamEditor({ nodes, edges, tools, hosts, onChange, 
                         <Typography.Text strong>{param.label || param.name}</Typography.Text>
                         {param.label && param.label !== param.name && (
                           <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                            {param.name}
+                            {param.type === "host" ? "内置参数" : param.name}
                           </Typography.Text>
                         )}
                         {tagForParam(param)}
@@ -170,7 +171,7 @@ export default function FlowParamEditor({ nodes, edges, tools, hosts, onChange, 
                             if (next === "input") {
                               updateMapping(node.id, param.name, {
                                 source: "input",
-                                input_name: param.name,
+                                input_name: defaultInputName(node, param),
                                 input_label: param.label || param.name,
                               });
                               return;

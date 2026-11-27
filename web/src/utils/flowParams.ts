@@ -90,6 +90,14 @@ export function ancestorIDs(nodeID: string, edges: ParamEdge[]): Set<string> {
   return visited;
 }
 
+/** Picks a valid default execution-input name for a node parameter. The
+ *  built-in host parameter cannot reuse its reserved SPOOL_ parameter name. */
+export function defaultInputName(node: ParamFlowNode, param: ToolParam): string {
+  if (param.type !== "host") return param.name;
+  const cleaned = `host_${node.id}`.replace(/[^A-Za-z0-9_]/g, "_");
+  return /^[A-Za-z_]/.test(cleaned) ? cleaned : `_${cleaned}`;
+}
+
 export function toolFlowParams(tool: ToolSummary | undefined): ToolParam[] {
   if (!tool) return [];
   const host = tool.host_param;

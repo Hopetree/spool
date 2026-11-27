@@ -3,6 +3,7 @@ import type { ToolParam, ToolSummary } from "../api/tools";
 import {
   ancestorIDs,
   compatibleUpstreamParams,
+  defaultInputName,
   deriveInputs,
   inputConflicts,
   resolveBinding,
@@ -125,6 +126,16 @@ describe("flow parameter helpers", () => {
     const labelConflicts = inputConflicts(duplicatedLabel, tools);
     expect(labelConflicts).toHaveLength(1);
     expect(labelConflicts[0]).toMatchObject({ kind: "label", value: "巡检包路径" });
+  });
+
+  it("generates valid default input names for host parameters", () => {
+    const hostParam: ToolParam = {
+      name: "SPOOL_HOST", label: "执行主机", type: "host", required: true,
+      default: "[]", options: [], description: "", sensitive: false,
+    };
+    expect(defaultInputName(nodes[1], hostParam)).toBe("host_a");
+    const envParam: ToolParam = { ...hostParam, name: "SERVICE", type: "string" };
+    expect(defaultInputName(nodes[1], envParam)).toBe("SERVICE");
   });
 
   it("rejects sibling references", () => {
