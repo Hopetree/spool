@@ -183,7 +183,7 @@ export default function Home() {
                     key={b.key}
                     title={
                       <div style={{ minWidth: 150 }}>
-                        <div style={{ fontWeight: 600, marginBottom: 4 }}>{b.key}</div>
+                        <div style={{ fontWeight: 600, marginBottom: 4 }}>{dayjs(b.key).format("dddd")}</div>
                         <div>总执行：{total} 次</div>
                         <div>
                           成功：{b.success} · 失败：{b.failed} · 其他：{b.other}
