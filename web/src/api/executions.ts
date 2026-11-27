@@ -80,6 +80,7 @@ export interface ExecutionGraphNode {
   tool_name?: string;
   tool_type?: string;
   tool_version_no?: number;
+  params?: Record<string, string>;
   x: number;
   y: number;
 }

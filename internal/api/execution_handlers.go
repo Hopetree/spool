@@ -50,15 +50,16 @@ type executionGraph struct {
 }
 
 type executionGraphNode struct {
-	ID            string  `json:"id"`
-	Type          string  `json:"type"`
-	Name          string  `json:"name"`
-	ToolID        string  `json:"tool_id,omitempty"`
-	ToolName      string  `json:"tool_name,omitempty"`
-	ToolType      string  `json:"tool_type,omitempty"`
-	ToolVersionNo int     `json:"tool_version_no,omitempty"`
-	X             float64 `json:"x"`
-	Y             float64 `json:"y"`
+	ID            string            `json:"id"`
+	Type          string            `json:"type"`
+	Name          string            `json:"name"`
+	ToolID        string            `json:"tool_id,omitempty"`
+	ToolName      string            `json:"tool_name,omitempty"`
+	ToolType      string            `json:"tool_type,omitempty"`
+	ToolVersionNo int               `json:"tool_version_no,omitempty"`
+	Params        map[string]string `json:"params,omitempty"`
+	X             float64           `json:"x"`
+	Y             float64           `json:"y"`
 }
 
 type executionGraphEdge struct {
@@ -84,7 +85,7 @@ func executionGraphOf(planJSON string) *executionGraph {
 	for _, n := range plan.Graph.Nodes {
 		out.Nodes = append(out.Nodes, executionGraphNode{
 			ID: n.ID, Type: n.Type, Name: n.Name, ToolID: n.ToolID, ToolName: n.ToolName,
-			ToolType: n.ToolType, ToolVersionNo: n.ToolVersionNo, X: n.X, Y: n.Y,
+			ToolType: n.ToolType, ToolVersionNo: n.ToolVersionNo, Params: n.Params, X: n.X, Y: n.Y,
 		})
 	}
 	for _, e := range plan.Graph.Edges {
