@@ -250,7 +250,7 @@ func TestDuplicateInputNamesAndLabelsRejected(t *testing.T) {
 }
 
 func TestLegacyFlowMappingConversionAndFiltering(t *testing.T) {
-	svc, tools, _ := newFlowFixture(t)
+	svc, tools, st := newFlowFixture(t)
 	ctx := context.Background()
 	a := createTool(t, tools, "legacy", []tool.Param{{Name: "ENV", Type: "string", Default: "prod"}})
 	in := Input{
@@ -273,6 +273,18 @@ func TestLegacyFlowMappingConversionAndFiltering(t *testing.T) {
 	}
 	if len(created.Params) != 1 || created.Params[0].Name != "ENV" || created.Params[0].Default != "" {
 		t.Fatalf("params = %+v", created.Params)
+	}
+	// Old flows may still carry stored defaults; responses must not expose them.
+	if _, err := st.DB.Exec(`UPDATE flows SET params_json = ? WHERE id = ?`,
+		`[{"name":"ENV","label":"环境","type":"string","required":false,"default":"prod","options":[]}]`, created.ID); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := svc.Get(ctx, created.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(loaded.Params) != 1 || loaded.Params[0].Default != "" {
+		t.Fatalf("stored default exposed: %+v", loaded.Params)
 	}
 	m := created.Nodes[1].Mapping["ENV"]
 	if m.Source != "input" || m.InputName != "ENV" || m.InputLabel != "环境" {

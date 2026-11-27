@@ -473,6 +473,9 @@ func normalizeLegacyNodeMappings(detail *Detail) {
 	filtered := make([]tool.Param, 0, len(used))
 	for _, p := range detail.Params {
 		if used[p.Name] {
+			// Flow parameters are execution inputs now. They never auto-fill
+			// the tool default, including flows saved before this rule.
+			p.Default = ""
 			filtered = append(filtered, p)
 		}
 	}
