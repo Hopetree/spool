@@ -178,7 +178,7 @@ func TestCompileBuildsGraph(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	res, err := svc.Compile(ctx, created.ID, map[string]string{"ENV": "prod", "SECRET": "s3cr3t"})
+	res, err := svc.Compile(ctx, created.ID, map[string]string{"ENV": "prod", "SECRET": "s3cr3t"}, nil)
 	if err != nil {
 		t.Fatalf("compile: %v", err)
 	}
@@ -226,7 +226,7 @@ func TestCompileDisabledFlowAndTool(t *testing.T) {
 	if err := svc.SetEnabled(ctx, created.ID, false); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := svc.Compile(ctx, created.ID, map[string]string{"SECRET": "x"}); !errors.Is(err, ErrDisabled) {
+	if _, err := svc.Compile(ctx, created.ID, map[string]string{"SECRET": "x"}, nil); !errors.Is(err, ErrDisabled) {
 		t.Fatalf("err = %v, want ErrDisabled", err)
 	}
 	if err := svc.SetEnabled(ctx, created.ID, true); err != nil {
@@ -235,7 +235,7 @@ func TestCompileDisabledFlowAndTool(t *testing.T) {
 	if err := tools.SetEnabled(ctx, a.ID, false); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := svc.Compile(ctx, created.ID, map[string]string{"SECRET": "x"}); err == nil {
+	if _, err := svc.Compile(ctx, created.ID, map[string]string{"SECRET": "x"}, nil); err == nil {
 		t.Fatal("expected disabled tool error")
 	}
 }

@@ -7,6 +7,7 @@ import { runFlow } from "../api/executions";
 import { getFlow } from "../api/flows";
 import { listHosts } from "../api/hosts";
 import type { ToolParam } from "../api/tools";
+import { flowHostInputs } from "../utils/flowParams";
 
 interface Props {
   flowID: string | null;
@@ -16,6 +17,7 @@ interface Props {
 
 interface FormValues {
   host_ids: string[];
+  node_host_ids: Record<string, string[]>;
   params: Record<string, string>;
 }
 
@@ -74,8 +76,18 @@ export default function ExecuteFlowModal({ flowID, open, onClose }: Props) {
     form.resetFields();
   }, [open, form]);
 
-  const toolNodes = (flow?.nodes ?? []).filter((node) => node.type === "tool");
-  const allNodesConfigured = toolNodes.length > 0 && toolNodes.every((node) => (node.host_ids ?? []).length > 0);
+  const paramNodes = (flow?.nodes ?? []).map((node) => ({
+    id: node.id,
+    kind: node.type,
+    name: node.name,
+    toolID: node.tool_id,
+    hostSource: node.host_source ?? ((node.host_ids ?? []).length > 0 ? "fixed" : "default"),
+    hostIDs: node.host_ids ?? [],
+    hostRefNodeID: node.host_ref_node_id ?? "",
+    mapping: node.mapping ?? {},
+  }));
+  const hostInfo = flowHostInputs(paramNodes);
+  const needsDefaultHosts = hostInfo.needsDefaultHosts;
 
   return (
     <Modal
@@ -97,27 +109,39 @@ export default function ExecuteFlowModal({ flowID, open, onClose }: Props) {
             ref_id: flowID,
             params: values.params ?? {},
             host_ids: values.host_ids ?? [],
+            node_host_ids: values.node_host_ids ?? {},
           });
         }}
       >
-        <Form.Item
-          name="host_ids"
-          label="默认执行主机"
-          extra={
-            allNodesConfigured
-              ? "所有节点都已单独设置执行主机，此处可以不选。"
-              : "仅对未单独设置执行主机的节点生效；选择后未配置的节点会在这些主机上执行。"
-          }
-          rules={allNodesConfigured ? [] : [{ required: true, message: "请选择默认执行主机" }]}
-        >
-          <Select
-            mode="multiple"
-            optionFilterProp="label"
-            disabled={allNodesConfigured}
-            placeholder={allNodesConfigured ? "无需选择" : "选择默认执行主机"}
-            options={hosts.map((h) => ({ value: h.id, label: `${h.name} (${h.address})` }))}
-          />
-        </Form.Item>
+        {needsDefaultHosts && (
+          <Form.Item
+            name="host_ids"
+            label="默认执行主机"
+            rules={[{ required: true, message: "请选择默认执行主机" }]}
+          >
+            <Select
+              mode="multiple"
+              optionFilterProp="label"
+              placeholder="选择默认执行主机"
+              options={hosts.map((h) => ({ value: h.id, label: `${h.name} (${h.address})` }))}
+            />
+          </Form.Item>
+        )}
+        {hostInfo.inputNodes.map((node) => (
+          <Form.Item
+            key={node.id}
+            name={["node_host_ids", node.id]}
+            label={`执行主机 · ${node.name || node.id}`}
+            rules={[{ required: true, message: "请选择执行主机" }]}
+          >
+            <Select
+              mode="multiple"
+              optionFilterProp="label"
+              placeholder="选择该节点的执行主机"
+              options={hosts.map((h) => ({ value: h.id, label: `${h.name} (${h.address})` }))}
+            />
+          </Form.Item>
+        ))}
         {(flow?.params ?? []).map((p) => (
           <Form.Item
             key={p.name}

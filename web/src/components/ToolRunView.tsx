@@ -29,6 +29,7 @@ export interface ToolRunHost {
   startedAt: number | null;
   finishedAt: number | null;
   errorMessage: string;
+  failureReason?: string;
   hostRunID: string;
   stepRunID?: string;
   exitCode?: number | null;
@@ -336,6 +337,7 @@ export function ToolRunConsole({
                   <div style={{ fontSize: 12, color: "#8c8c8c", marginTop: 4 }}>
                     耗时 {duration(host.startedAt, host.finishedAt)}
                     {host.exitCode !== null && host.exitCode !== undefined && ` · 退出码 ${host.exitCode}`}
+                    {host.failureReason && ` · 错误码 ${host.failureReason}`}
                     {host.truncated && " · 输出已截断"}
                   </div>
                   {host.errorMessage && (
@@ -376,7 +378,16 @@ export function ToolRunConsole({
 
         <div style={{ flex: 1, minWidth: 0 }}>
           {selected?.errorMessage && (
-            <Alert type="error" showIcon message={selected.errorMessage} style={{ marginBottom: 8 }} />
+            <Alert
+              type="error"
+              showIcon
+              message={
+                selected.failureReason
+                  ? `${selected.failureReason}：${selected.errorMessage}`
+                  : selected.errorMessage
+              }
+              style={{ marginBottom: 8 }}
+            />
           )}
           {selected ? (
             <LogViewer

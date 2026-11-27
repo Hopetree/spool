@@ -14,16 +14,17 @@ import (
 )
 
 type scheduleInput struct {
-	Name              string            `json:"name"`
-	TargetKind        string            `json:"target_kind"`
-	TargetRefID       string            `json:"target_ref_id"`
-	Params            map[string]string `json:"params"`
-	HostIDs           []string          `json:"host_ids"`
-	CronExpr          string            `json:"cron_expr"`
-	ConcurrencyPolicy string            `json:"concurrency_policy"`
-	NotifyChannelIDs  []string          `json:"notify_channel_ids"`
-	NotifyEvents      string            `json:"notify_events"`
-	Enabled           *bool             `json:"enabled"`
+	Name              string              `json:"name"`
+	TargetKind        string              `json:"target_kind"`
+	TargetRefID       string              `json:"target_ref_id"`
+	Params            map[string]string   `json:"params"`
+	HostIDs           []string            `json:"host_ids"`
+	NodeHostIDs       map[string][]string `json:"node_host_ids"`
+	CronExpr          string              `json:"cron_expr"`
+	ConcurrencyPolicy string              `json:"concurrency_policy"`
+	NotifyChannelIDs  []string            `json:"notify_channel_ids"`
+	NotifyEvents      string              `json:"notify_events"`
+	Enabled           *bool               `json:"enabled"`
 }
 
 func (in scheduleInput) toServiceInput() schedule.Input {
@@ -33,7 +34,7 @@ func (in scheduleInput) toServiceInput() schedule.Input {
 	}
 	return schedule.Input{
 		Name: in.Name, TargetKind: in.TargetKind, TargetRefID: in.TargetRefID,
-		Params: in.Params, HostIDs: in.HostIDs, CronExpr: in.CronExpr,
+		Params: in.Params, HostIDs: in.HostIDs, NodeHostIDs: in.NodeHostIDs, CronExpr: in.CronExpr,
 		ConcurrencyPolicy: in.ConcurrencyPolicy, NotifyChannelIDs: in.NotifyChannelIDs,
 		NotifyEvents: in.NotifyEvents, Enabled: enabled,
 	}

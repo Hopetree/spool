@@ -1,4 +1,4 @@
-import type { FlowMapping } from "../api/flows";
+import type { FlowMapping, HostSource } from "../api/flows";
 import type { ParamType, ToolParam, ToolSummary } from "../api/tools";
 
 export interface ParamFlowNode {
@@ -6,6 +6,9 @@ export interface ParamFlowNode {
   kind: "start" | "tool";
   name: string;
   toolID: string;
+  hostSource: HostSource;
+  hostIDs: string[];
+  hostRefNodeID: string;
   mapping: Record<string, FlowMapping>;
 }
 
@@ -353,6 +356,30 @@ export function inputConflicts(nodes: ParamFlowNode[], tools: Map<string, ToolSu
     }
   }
   return conflicts;
+}
+
+
+export function flowHostInputs(nodes: ParamFlowNode[]): { inputNodes: ParamFlowNode[]; needsDefaultHosts: boolean } {
+  const byID = new Map(nodes.map((node) => [node.id, node]));
+  const rootSource = (node: ParamFlowNode): HostSource => {
+    const seen = new Set<string>();
+    let current: ParamFlowNode | undefined = node;
+    while (current && current.hostSource === "node") {
+      if (seen.has(current.id)) return "default";
+      seen.add(current.id);
+      current = byID.get(current.hostRefNodeID);
+    }
+    if (!current) return "default";
+    return current.hostSource || (current.hostIDs.length > 0 ? "fixed" : "default");
+  };
+  const inputNodes: ParamFlowNode[] = [];
+  let needsDefaultHosts = false;
+  for (const node of nodes) {
+    if (node.kind !== "tool") continue;
+    if (node.hostSource === "input") inputNodes.push(node);
+    if (rootSource(node) === "default") needsDefaultHosts = true;
+  }
+  return { inputNodes, needsDefaultHosts };
 }
 
 export function compatibleUpstreamParams(

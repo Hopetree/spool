@@ -75,7 +75,9 @@ function toolNodeData(name = "新节点"): FlowNodeData {
     toolID: "",
     toolName: "",
     toolType: "",
+    hostSource: "default",
     hostIDs: [],
+    hostRefNodeID: "",
     mapping: {},
     timeoutSec: 0,
     retryCount: 0,
@@ -146,7 +148,9 @@ export default function FlowEditor() {
                   toolID: "",
                   toolName: "",
                   toolType: "",
+                  hostSource: "default",
                   hostIDs: [],
+                  hostRefNodeID: "",
                   mapping: {},
                   timeoutSec: 0,
                   retryCount: 0,
@@ -284,7 +288,9 @@ export default function FlowEditor() {
       type: n.data.kind,
       name: n.data.kind === "start" ? "开始" : n.data.name,
       tool_id: n.data.kind === "start" ? "" : n.data.toolID,
+      host_source: n.data.kind === "start" ? "default" : n.data.hostSource,
       host_ids: n.data.kind === "start" ? [] : n.data.hostIDs,
+      host_ref_node_id: n.data.kind === "start" ? "" : n.data.hostRefNodeID,
       mapping: n.data.kind === "start" ? {} : n.data.mapping,
       timeout_sec: n.data.timeoutSec,
       retry_count: n.data.retryCount,
@@ -317,6 +323,9 @@ export default function FlowEditor() {
       kind: node.data.kind,
       name: node.data.name,
       toolID: node.data.kind === "start" ? "" : node.data.toolID,
+      hostSource: node.data.kind === "start" ? "default" : node.data.hostSource,
+      hostIDs: node.data.kind === "start" ? [] : node.data.hostIDs,
+      hostRefNodeID: node.data.kind === "start" ? "" : node.data.hostRefNodeID,
       mapping: node.data.kind === "start" ? {} : node.data.mapping,
     }));
     const conflicts = inputConflicts(paramNodes, new Map(tools.map((tool) => [tool.id, tool])));
@@ -427,7 +436,7 @@ export default function FlowEditor() {
             </Typography.Text>
           }
         >
-          <div style={{ height: 620 }} onDoubleClick={handleCanvasDoubleClick}>
+          <div style={{ height: 520 }} onDoubleClick={handleCanvasDoubleClick}>
             <ReactFlow
               className="light"
               nodes={nodes}
@@ -472,11 +481,16 @@ export default function FlowEditor() {
                 kind: node.data.kind,
                 name: node.data.name,
                 toolID: node.data.kind === "start" ? "" : node.data.toolID,
+                hostSource: node.data.kind === "start" ? "default" : node.data.hostSource,
+                hostIDs: node.data.kind === "start" ? [] : node.data.hostIDs,
+                hostRefNodeID: node.data.kind === "start" ? "" : node.data.hostRefNodeID,
                 mapping: node.data.kind === "start" ? {} : node.data.mapping,
               }))}
               edges={edges.map((edge) => ({ from: edge.source, to: edge.target }))}
               tools={tools}
+              hosts={hosts}
               onChange={(nodeID, mapping) => updateNodeData(nodeID, { mapping })}
+              onHostChange={(nodeID, patch) => updateNodeData(nodeID, patch)}
               onOpenNode={(nodeID) => setSelectedNodeID(nodeID)}
             />
           </Card>
@@ -528,23 +542,6 @@ export default function FlowEditor() {
                 />
               </div>
             </Space>
-            <div>
-              <div style={{ fontSize: 12, color: "#8c8c8c", marginBottom: 4 }}>执行主机</div>
-              <Select
-                mode="multiple"
-                allowClear
-                showSearch
-                optionFilterProp="label"
-                style={{ width: "100%" }}
-                placeholder="选择该节点执行的主机"
-                value={selectedNode.data.hostIDs}
-                onChange={(hostIDs) => updateNodeData(selectedNode.id, { hostIDs })}
-                options={hosts.map((h) => ({ value: h.id, label: `${h.name} (${h.address})` }))}
-              />
-              <div style={{ fontSize: 12, color: "#8c8c8c", marginTop: 4 }}>
-                留空表示使用流程执行时选择的默认主机；设置后该节点只在所选主机执行。
-              </div>
-            </div>
             <Space wrap>
               <div>
                 <div style={{ fontSize: 12, color: "#8c8c8c" }}>超时（秒，0=工具默认）</div>

@@ -31,6 +31,7 @@ import {
 import { getTool, listTools, type ToolParam } from "../api/tools";
 import PageHeader from "../components/PageHeader";
 import { describeCron } from "../utils/cron";
+import { flowHostInputs } from "../utils/flowParams";
 import { useAuthStore } from "../stores/auth";
 
 interface FormValues {
@@ -39,6 +40,7 @@ interface FormValues {
   target_ref_id: string;
   params?: Record<string, string>;
   host_ids: string[];
+  node_host_ids?: Record<string, string[]>;
   cron_expr: string;
   concurrency_policy: ConcurrencyPolicy;
   notify_channel_ids?: string[];
@@ -114,10 +116,18 @@ export default function ScheduleEditor() {
     enabled: kind === "flow" && !!targetRef,
   });
   const params: ToolParam[] = kind === "tool" ? toolDetail?.version.params ?? [] : flowDetail?.params ?? [];
-  const flowToolNodes = (flowDetail?.nodes ?? []).filter((n) => n.type === "tool");
-  const flowAllNodesConfigured =
-    kind === "flow" && flowToolNodes.length > 0 && flowToolNodes.every((n) => (n.host_ids ?? []).length > 0);
-  const hostsRequired = kind !== "flow" || !flowAllNodesConfigured;
+  const flowParamNodes = (flowDetail?.nodes ?? []).map((node) => ({
+    id: node.id,
+    kind: node.type,
+    name: node.name,
+    toolID: node.tool_id,
+    hostSource: node.host_source ?? ((node.host_ids ?? []).length > 0 ? "fixed" : "default"),
+    hostIDs: node.host_ids ?? [],
+    hostRefNodeID: node.host_ref_node_id ?? "",
+    mapping: node.mapping ?? {},
+  }));
+  const flowHostInfo = flowHostInputs(flowParamNodes);
+  const hostsRequired = kind !== "flow" || flowHostInfo.needsDefaultHosts;
 
   const tools = (toolPage?.items ?? []).filter((t) => t.enabled);
   const flows = (flowPage?.items ?? []).filter((f) => f.enabled);
@@ -131,6 +141,7 @@ export default function ScheduleEditor() {
       target_ref_id: detail.target_ref_id,
       params: { ...detail.params },
       host_ids: detail.host_ids,
+      node_host_ids: { ...detail.node_host_ids },
       cron_expr: detail.cron_expr,
       concurrency_policy: detail.concurrency_policy,
       notify_channel_ids: detail.notify_channel_ids,
@@ -167,6 +178,7 @@ export default function ScheduleEditor() {
         target_ref_id: values.target_ref_id,
         params: values.params ?? {},
         host_ids: values.host_ids ?? [],
+        node_host_ids: values.node_host_ids ?? {},
         cron_expr: values.cron_expr,
         concurrency_policy: values.concurrency_policy,
         notify_channel_ids: values.notify_channel_ids ?? [],
@@ -224,7 +236,7 @@ export default function ScheduleEditor() {
             </Form.Item>
             <Form.Item name="target_kind" label="执行对象类型" style={{ width: 140 }}>
               <Select
-                onChange={() => form.setFieldsValue({ target_ref_id: "", params: {} })}
+                onChange={() => form.setFieldsValue({ target_ref_id: "", params: {}, node_host_ids: {} })}
                 options={[
                   { value: "tool", label: "工具" },
                   { value: "flow", label: "流程" },
@@ -290,30 +302,42 @@ export default function ScheduleEditor() {
         </Card>
 
         <Card title="目标与参数" style={{ marginBottom: 16 }}>
-          <Form.Item
-            name="host_ids"
-            label={kind === "flow" ? "默认执行主机" : "目标主机"}
-            extra={
-              kind === "flow"
-                ? "仅对未单独设置执行主机的流程节点生效；所有节点都已设置执行主机时可以不选。"
-                : undefined
-            }
-            rules={
-              hostsRequired
-                ? [{ required: true, message: kind === "flow" ? "请选择默认执行主机" : "请选择主机" }]
-                : []
-            }
-          >
-            <Select
-              mode="multiple"
-              optionFilterProp="label"
-              placeholder={kind === "flow" ? "可选，未配置主机的节点使用" : "选择一台或多台主机"}
-              options={hosts.map((h) => ({
-                value: h.id,
-                label: `${h.name} (${h.address})${h.enabled ? "" : " [停用]"}`,
-              }))}
-            />
-          </Form.Item>
+          {hostsRequired && (
+            <Form.Item
+              name="host_ids"
+              label={kind === "flow" ? "默认执行主机" : "目标主机"}
+              rules={[{ required: true, message: kind === "flow" ? "请选择默认执行主机" : "请选择主机" }]}
+            >
+              <Select
+                mode="multiple"
+                optionFilterProp="label"
+                placeholder={kind === "flow" ? "选择默认执行主机" : "选择一台或多台主机"}
+                options={hosts.map((h) => ({
+                  value: h.id,
+                  label: `${h.name} (${h.address})${h.enabled ? "" : " [停用]"}`,
+                }))}
+              />
+            </Form.Item>
+          )}
+          {kind === "flow" &&
+            flowHostInfo.inputNodes.map((node) => (
+              <Form.Item
+                key={node.id}
+                name={["node_host_ids", node.id]}
+                label={`执行主机 · ${node.name || node.id}`}
+                rules={[{ required: true, message: "请选择执行主机" }]}
+              >
+                <Select
+                  mode="multiple"
+                  optionFilterProp="label"
+                  placeholder="选择该节点的执行主机"
+                  options={hosts.map((h) => ({
+                    value: h.id,
+                    label: `${h.name} (${h.address})${h.enabled ? "" : " [停用]"}`,
+                  }))}
+                />
+              </Form.Item>
+            ))}
           {params.length === 0 ? (
             <Typography.Text type="secondary">该执行对象没有参数</Typography.Text>
           ) : (

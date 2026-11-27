@@ -15,6 +15,7 @@ import {
   type FlowMapping,
   type FlowNode,
   type FlowNodeType,
+  type HostSource,
 } from "../api/flows";
 import { statusColors, statusLabel } from "./status";
 
@@ -25,7 +26,9 @@ export interface FlowNodeData extends Record<string, unknown> {
   toolID: string;
   toolName: string;
   toolType: string;
+  hostSource: HostSource;
   hostIDs: string[];
+  hostRefNodeID: string;
   mapping: Record<string, FlowMapping>;
   timeoutSec: number;
   retryCount: number;
@@ -71,7 +74,17 @@ function boxStyle(selected: boolean | undefined, start: boolean, status?: string
 
 function StartNode({ selected }: NodeProps<FlowRFNode>) {
   return (
-    <div style={{ ...boxStyle(selected, true), display: "flex", alignItems: "center", gap: 6 }}>
+    <div
+      style={{
+        ...boxStyle(selected, true),
+        width: 96,
+        borderRadius: 20,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 6,
+      }}
+    >
       <span style={{ width: 8, height: 8, borderRadius: 4, background: "#1677ff", flex: "none" }} />
       <span style={{ fontWeight: 600 }}>开始</span>
       <Handle type="source" position={Position.Right} style={{ width: 8, height: 8, background: "#1677ff" }} />
@@ -124,7 +137,13 @@ function ToolNode({ data, selected }: NodeProps<FlowRFNode>) {
         {data.toolName ? `工具 · ${data.toolName}` : data.toolID ? `工具 · ${data.toolID}` : "未选择工具"}
       </div>
       <div style={{ fontSize: 11, color: "#8c8c8c" }}>
-        {data.hostIDs.length > 0 ? `${data.hostIDs.length} 台执行主机` : "默认执行主机"}
+        {data.hostSource === "input"
+          ? "执行时选择主机"
+          : data.hostSource === "node"
+            ? "引用上游主机"
+            : data.hostIDs.length > 0
+              ? `${data.hostIDs.length} 台执行主机`
+              : "默认执行主机"}
       </div>
       <Handle type="source" position={Position.Right} style={{ width: 8, height: 8 }} />
     </div>
@@ -176,7 +195,9 @@ export function flowToRFNodes(nodes: FlowNode[], interactive = false): FlowRFNod
       toolID: n.tool_id,
       toolName: n.tool_name,
       toolType: n.tool_type,
+      hostSource: n.host_source ?? (n.host_ids?.length ? "fixed" : "default"),
       hostIDs: n.host_ids ?? [],
+      hostRefNodeID: n.host_ref_node_id ?? "",
       mapping: n.mapping ?? {},
       timeoutSec: n.timeout_sec,
       retryCount: n.retry_count,

@@ -402,7 +402,7 @@ func TestSubmitRejectsNoEnabledHosts(t *testing.T) {
 	}
 }
 
-func TestHostConnectFailureSkipsSteps(t *testing.T) {
+func TestHostConnectFailureFailsSteps(t *testing.T) {
 	fx := newEngineFixture(t, Config{}, &fakeRunnerWrapper{r: &fakeRunner{}})
 	fx.engine.factory = &fakeFactory{err: errors.New("boom")}
 	ex, err := fx.engine.Submit(context.Background(), SubmitRequest{
@@ -416,8 +416,11 @@ func TestHostConnectFailureSkipsSteps(t *testing.T) {
 		t.Fatalf("execution = %+v", final)
 	}
 	steps, _ := fx.engine.StepRuns(context.Background(), ex.ID)
-	if len(steps) != 1 || steps[0].Status != "skipped" || steps[0].FailureReason != "skipped" {
+	if len(steps) != 1 || steps[0].Status != "failed" || steps[0].FailureReason != "ssh_error" {
 		t.Fatalf("step = %+v", steps[0])
+	}
+	if !strings.Contains(steps[0].ErrorMessage, "SSH 连接失败") {
+		t.Fatalf("step message = %q", steps[0].ErrorMessage)
 	}
 }
 
@@ -699,5 +702,62 @@ func TestGraphUnhandledFailure(t *testing.T) {
 	ex := submitGraph(t, fx, nodes, edges)
 	if final := waitTerminal(t, fx.engine, ex.ID); final.Status != "failed" {
 		t.Fatalf("status = %q", final.Status)
+	}
+}
+
+type selectiveFactory struct {
+	runner   Runner
+	failName string
+	err      error
+}
+
+func (f selectiveFactory) Connect(ctx context.Context, h HostRef) (Runner, error) {
+	if h.Name == f.failName {
+		return nil, f.err
+	}
+	return f.runner, nil
+}
+
+func TestGraphInfrastructureFailureStillFailsHostWhenHandled(t *testing.T) {
+	runner := &fakeRunner{responses: []fakeResponse{{code: 0, stdout: "ok\n"}}}
+	fx := newEngineFixture(t, Config{}, &fakeRunnerWrapper{r: runner})
+	fx.engine.factory = selectiveFactory{runner: &fakeRunnerWrapper{r: runner}, failName: "h1", err: errors.New("dial failed")}
+	n1 := graphNode("n1", "first", "first")
+	n1.HostIDs = []string{fx.hostID}
+	n2 := graphNode("n2", "second", "second")
+	n2.HostIDs = []string{fx.hostID2}
+	ex := submitGraph(t, fx, []GraphNode{
+		{ID: "start", Type: "start", Name: "开始"}, n1, n2,
+	}, []GraphEdge{
+		{From: "start", To: "n1", Condition: "always"},
+		{From: "n1", To: "n2", Condition: "failure"},
+	})
+	final := waitTerminal(t, fx.engine, ex.ID)
+	if final.Status == "success" {
+		t.Fatalf("final = %+v", final)
+	}
+	hosts, _ := fx.engine.HostRuns(context.Background(), ex.ID)
+	byName := map[string]HostRun{}
+	for _, host := range hosts {
+		byName[host.HostName] = host
+	}
+	if byName["h1"].Status != "failed" || byName["h1"].FailureReason != "ssh_error" {
+		t.Fatalf("h1 = %+v", byName["h1"])
+	}
+	if byName["h2"].Status != "success" {
+		t.Fatalf("h2 = %+v", byName["h2"])
+	}
+	steps, _ := fx.engine.StepRuns(context.Background(), ex.ID)
+	for _, step := range steps {
+		switch step.NodeID {
+		case "n1":
+			if step.Status != "failed" || step.FailureReason != "ssh_error" || !strings.Contains(step.ErrorMessage, "SSH 连接失败") {
+				t.Fatalf("n1 step = %+v", step)
+			}
+		case "n2":
+			if step.Status != "success" {
+				t.Fatalf("n2 step = %+v", step)
+			}
+		}
 	}
 }

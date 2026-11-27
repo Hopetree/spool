@@ -486,7 +486,8 @@ func nodeInputsFromDetail(nodes []Node) []NodeInput {
 	out := make([]NodeInput, 0, len(nodes))
 	for _, n := range nodes {
 		out = append(out, NodeInput{
-			ID: n.ID, Type: n.Type, Name: n.Name, ToolID: n.ToolID, HostIDs: n.HostIDs, Mapping: n.Mapping,
+			ID: n.ID, Type: n.Type, Name: n.Name, ToolID: n.ToolID,
+			HostSource: n.HostSource, HostIDs: n.HostIDs, HostRefNodeID: n.HostRefNodeID, Mapping: n.Mapping,
 			TimeoutSec: n.TimeoutSec, RetryCount: n.RetryCount, RetryDelaySec: n.RetryDelaySec, X: n.X, Y: n.Y,
 		})
 	}
@@ -499,4 +500,112 @@ func edgeInputsFromDetail(edges []Edge) []EdgeInput {
 		out = append(out, EdgeInput{From: e.From, To: e.To, Condition: e.Condition, Value: e.Value})
 	}
 	return out
+}
+
+func validateHostReferences(nodes []NodeInput, ancestors map[string]map[string]bool) error {
+	byID := make(map[string]NodeInput, len(nodes))
+	for _, node := range nodes {
+		byID[node.ID] = node
+	}
+	for _, node := range nodes {
+		if node.Type != NodeTool || node.HostSource != HostSourceNode {
+			continue
+		}
+		target, ok := byID[node.HostRefNodeID]
+		if !ok {
+			return invalid(fmt.Sprintf("节点 %q 引用的执行主机节点不存在", node.Name))
+		}
+		if target.Type != NodeTool {
+			return invalid(fmt.Sprintf("节点 %q 的执行主机只能引用工具节点", node.Name))
+		}
+		if !ancestors[node.ID][node.HostRefNodeID] {
+			return invalid(fmt.Sprintf("节点 %q 的执行主机只能引用上游节点", node.Name))
+		}
+	}
+	return nil
+}
+
+type hostConfig struct {
+	HostIDs []string
+	Default bool
+}
+
+func resolveHostConfigs(nodes []NodeInput, ancestors map[string]map[string]bool,
+	selections map[string][]string) (map[string]hostConfig, error) {
+	byID := make(map[string]NodeInput, len(nodes))
+	for _, node := range nodes {
+		byID[node.ID] = node
+	}
+	memo := map[string]hostConfig{}
+	visiting := map[string]bool{}
+	var resolve func(nodeID string) (hostConfig, error)
+	resolve = func(nodeID string) (hostConfig, error) {
+		if res, ok := memo[nodeID]; ok {
+			return res, nil
+		}
+		if visiting[nodeID] {
+			return hostConfig{}, invalid("执行主机引用存在循环")
+		}
+		visiting[nodeID] = true
+		defer delete(visiting, nodeID)
+
+		node, ok := byID[nodeID]
+		if !ok {
+			return hostConfig{}, invalid("引用的节点不存在")
+		}
+		source := node.HostSource
+		if source == "" {
+			if len(node.HostIDs) > 0 {
+				source = HostSourceFixed
+			} else {
+				source = HostSourceDefault
+			}
+		}
+		var res hostConfig
+		switch source {
+		case HostSourceDefault:
+			res = hostConfig{Default: true}
+		case HostSourceFixed:
+			hosts := normalizeHostIDs(node.HostIDs)
+			if len(hosts) == 0 {
+				return hostConfig{}, invalid(fmt.Sprintf("节点 %q 的固定主机不能为空", node.Name))
+			}
+			res = hostConfig{HostIDs: hosts}
+		case HostSourceInput:
+			hosts := normalizeHostIDs(selections[nodeID])
+			if len(hosts) == 0 {
+				return hostConfig{}, invalid(fmt.Sprintf("节点 %q 需要选择执行主机", node.Name))
+			}
+			res = hostConfig{HostIDs: hosts}
+		case HostSourceNode:
+			if node.HostRefNodeID == "" {
+				return hostConfig{}, invalid(fmt.Sprintf("节点 %q 未选择引用主机的上游节点", node.Name))
+			}
+			if !ancestors[nodeID][node.HostRefNodeID] {
+				return hostConfig{}, invalid(fmt.Sprintf("节点 %q 的执行主机只能引用上游节点", node.Name))
+			}
+			inherited, err := resolve(node.HostRefNodeID)
+			if err != nil {
+				return hostConfig{}, err
+			}
+			res = inherited
+		default:
+			return hostConfig{}, invalid(fmt.Sprintf("节点 %q 的执行主机来源不合法", node.Name))
+		}
+		memo[nodeID] = res
+		return res, nil
+	}
+
+	out := make(map[string]hostConfig, len(nodes))
+	for _, node := range nodes {
+		if node.Type != NodeTool {
+			continue
+		}
+		res, err := resolve(node.ID)
+		if err != nil {
+			return nil, err
+		}
+		out[node.ID] = res
+	}
+	return out, nil
 }

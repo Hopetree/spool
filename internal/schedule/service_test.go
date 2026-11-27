@@ -211,6 +211,43 @@ func TestFlowScheduleHostsFollowNodeConfiguration(t *testing.T) {
 	}
 }
 
+func TestFlowScheduleNodeHostSelection(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	d, err := f.flows.Create(ctx, flow.Input{
+		Name: "host-input-flow", MaxDurationSec: 600,
+		Nodes: []flow.NodeInput{
+			{ID: "start", Type: "start", Name: "开始"},
+			{ID: "a", Type: "tool", Name: "A", ToolID: f.toolID, HostSource: flow.HostSourceInput},
+			{ID: "b", Type: "tool", Name: "B", ToolID: f.toolID, HostSource: flow.HostSourceNode, HostRefNodeID: "a"},
+		},
+		Edges: []flow.EdgeInput{
+			{From: "start", To: "a", Condition: flow.CondAlways},
+			{From: "a", To: "b", Condition: flow.CondAlways},
+		},
+	}, "admin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	in := baseInput(f)
+	in.Name = "host-input-schedule"
+	in.TargetKind = "flow"
+	in.TargetRefID = d.ID
+	in.HostIDs = nil
+	in.NodeHostIDs = map[string][]string{"a": {f.hostID}}
+	created, err := f.svc.Create(ctx, in, "admin")
+	if err != nil {
+		t.Fatalf("create schedule: %v", err)
+	}
+	if len(created.NodeHostIDs["a"]) != 1 || created.NodeHostIDs["a"][0] != f.hostID {
+		t.Fatalf("node hosts = %+v", created.NodeHostIDs)
+	}
+	in.NodeHostIDs = nil
+	if _, err := f.svc.Create(ctx, in, "admin"); err == nil {
+		t.Fatal("expected missing node host selection to fail")
+	}
+}
+
 func TestFlowScheduleIgnoresRemovedParameters(t *testing.T) {
 	f := newFixture(t)
 	ctx := context.Background()

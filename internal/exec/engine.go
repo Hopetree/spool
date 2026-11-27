@@ -388,6 +388,7 @@ func normalizeGraphHosts(plan *Plan, fallback []string) ([]string, error) {
 
 // Submit persists an execution and starts it asynchronously.
 func (e *Engine) Submit(ctx context.Context, req SubmitRequest) (*Execution, error) {
+	defaultHosts := uniqueIDs(req.HostIDs)
 	perHostGraph := false
 	if req.Plan.Graph != nil {
 		anyExplicit := false
@@ -406,6 +407,9 @@ func (e *Engine) Submit(ctx context.Context, req SubmitRequest) (*Execution, err
 		return nil, err
 	}
 	req.Plan.PerHostGraph = perHostGraph
+	if req.Plan.Graph != nil {
+		req.Plan.DefaultHostIDs = defaultHosts
+	}
 	hosts := []hostRow{}
 	if len(requested) > 0 {
 		q, args, err := sqlx.In(`SELECT id, name, address, port, credential_id, fingerprint, fingerprint_type, enabled
@@ -762,21 +766,24 @@ func (e *Engine) runHost(ctx context.Context, log *EventLog, ex Execution, hr Ho
 
 	target, err := e.loadHost(hostCtx, hr.HostID)
 	if err != nil {
-		e.skipQueuedSteps(log, steps, "skipped", "主机不可用，未执行")
-		e.finishHost(log, hr.ID, "failed", "host_unavailable", err.Error())
+		msg := "主机不可用：" + err.Error()
+		e.failQueuedSteps(log, steps, "host_unavailable", msg)
+		e.finishHost(log, hr.ID, "failed", "host_unavailable", msg)
 		return
 	}
 	runner, err := e.factory.Connect(hostCtx, target.ref)
 	if err != nil {
-		e.skipQueuedSteps(log, steps, "skipped", "SSH 连接失败，未执行")
-		e.finishHost(log, hr.ID, "failed", "ssh_error", err.Error())
+		msg := "SSH 连接失败：" + err.Error()
+		e.failQueuedSteps(log, steps, "ssh_error", msg)
+		e.finishHost(log, hr.ID, "failed", "ssh_error", msg)
 		return
 	}
 	defer runner.Close()
 
 	if _, err := e.db.ExecContext(hostCtx, `UPDATE host_runs SET status='running', started_at=? WHERE id=?`, e.nowMs(), hr.ID); err != nil {
-		e.skipQueuedSteps(log, steps, "skipped", "内部错误，未执行")
-		e.finishHost(log, hr.ID, "failed", "internal_error", err.Error())
+		msg := "内部错误：" + err.Error()
+		e.failQueuedSteps(log, steps, "internal_error", msg)
+		e.finishHost(log, hr.ID, "failed", "internal_error", msg)
 		return
 	}
 	log.Emit(Event{Type: "state", Entity: "host_run", Status: "running", HostRunID: hr.ID})
@@ -861,6 +868,25 @@ func (e *Engine) skipQueuedSteps(log *EventLog, steps []*StepRun, reason, msg st
 			e.finishStep(log, sr, "skipped", reason, nil, msg, 0, 0, false, 0)
 		}
 	}
+}
+
+// failQueuedSteps marks steps that could not start because the host itself was
+// unavailable as failed. Only flow branches that were never activated are
+// allowed to remain skipped.
+func (e *Engine) failQueuedSteps(log *EventLog, steps []*StepRun, reason, msg string) {
+	for _, sr := range steps {
+		if sr.Status == "queued" {
+			e.finishStep(log, sr, "failed", reason, nil, msg, 0, 0, false, 0)
+		}
+	}
+}
+
+func isInfrastructureFailure(reason string) bool {
+	switch reason {
+	case "ssh_error", "host_unavailable", "internal_error":
+		return true
+	}
+	return false
 }
 
 func (e *Engine) finishHost(log *EventLog, hostRunID, status, reason, msg string) {
@@ -1330,18 +1356,29 @@ func (e *Engine) runGraphExecution(ctx context.Context, log *EventLog, ex Execut
 				ready = append(ready, edge.To)
 			}
 		}
-		if res.Status == "failed" && !handledFailure {
+		if res.Status == "failed" {
+			infrastructureFailure := false
 			for _, hostResult := range res.HostResults {
-				if hostResult.Status != "failed" {
-					continue
+				if hostResult.Status == "failed" && isInfrastructureFailure(hostResult.Reason) {
+					infrastructureFailure = true
+					break
 				}
-				state := hostStates[hostResult.HostRunID]
-				if state == nil || state.failed {
-					continue
+			}
+			// SSH/host infrastructure failures always fail the affected host,
+			// even when a failure edge handles the node so the graph continues.
+			if !handledFailure || infrastructureFailure {
+				for _, hostResult := range res.HostResults {
+					if hostResult.Status != "failed" {
+						continue
+					}
+					state := hostStates[hostResult.HostRunID]
+					if state == nil || state.failed {
+						continue
+					}
+					state.failed = true
+					state.reason = hostResult.Reason
+					state.message = hostResult.Message
 				}
-				state.failed = true
-				state.reason = hostResult.Reason
-				state.message = hostResult.Message
 			}
 		}
 	}
@@ -1458,13 +1495,15 @@ func (e *Engine) runGraphNodeHost(ctx context.Context, log *EventLog, ex Executi
 	}
 	target, err := e.loadHost(ctx, hr.HostID)
 	if err != nil {
-		e.finishStep(log, sr, "failed", "host_unavailable", nil, err.Error(), 0, 0, false, 0)
-		return graphHostResult{HostRunID: hr.ID, Status: "failed", Reason: "host_unavailable", Message: err.Error()}
+		msg := "主机不可用：" + err.Error()
+		e.finishStep(log, sr, "failed", "host_unavailable", nil, msg, 0, 0, false, 0)
+		return graphHostResult{HostRunID: hr.ID, Status: "failed", Reason: "host_unavailable", Message: msg}
 	}
 	runner, err := e.factory.Connect(ctx, target.ref)
 	if err != nil {
-		e.finishStep(log, sr, "failed", "ssh_error", nil, err.Error(), 0, 0, false, 0)
-		return graphHostResult{HostRunID: hr.ID, Status: "failed", Reason: "ssh_error", Message: err.Error()}
+		msg := "SSH 连接失败：" + err.Error()
+		e.finishStep(log, sr, "failed", "ssh_error", nil, msg, 0, 0, false, 0)
+		return graphHostResult{HostRunID: hr.ID, Status: "failed", Reason: "ssh_error", Message: msg}
 	}
 	defer runner.Close()
 	output := e.runStep(ctx, log, ex, hr, sr, graphNodeStep(node), sensitive, target.cap, runner)
