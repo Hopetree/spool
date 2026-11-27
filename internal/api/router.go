@@ -70,6 +70,7 @@ func NewRouter(d Deps) *gin.Engine {
 	admin.PUT("/credentials/:id", updateCredentialHandler(d))
 	admin.DELETE("/credentials/:id", deleteCredentialHandler(d))
 	admin.POST("/hosts", createHostHandler(d))
+	admin.POST("/hosts/import", importHostsHandler(d))
 	admin.PUT("/hosts/:id", updateHostHandler(d))
 	admin.DELETE("/hosts/:id", deleteHostHandler(d))
 	admin.PUT("/hosts/:id/fingerprint", setFingerprintHandler(d))

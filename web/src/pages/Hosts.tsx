@@ -18,6 +18,7 @@ import {
   Typography,
 } from "antd";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { DownloadOutlined, ImportOutlined } from "@ant-design/icons";
 import { Link } from "react-router-dom";
 import dayjs from "dayjs";
 import { ApiError } from "../api/client";
@@ -34,6 +35,7 @@ import {
   type HostInput,
   type HostTestResult,
 } from "../api/hosts";
+import HostImportModal from "../components/HostImportModal";
 import PageHeader from "../components/PageHeader";
 import RowActions from "../components/RowActions";
 import { useAuthStore } from "../stores/auth";
@@ -66,6 +68,7 @@ export default function Hosts() {
   const [editing, setEditing] = useState<Host | null>(null);
   const [testResult, setTestResult] = useState<HostTestResult | null>(null);
   const [viewing, setViewing] = useState<Host | null>(null);
+  const [importOpen, setImportOpen] = useState(false);
   const [keyIssue, setKeyIssue] = useState<KeyIssue | null>(null);
   const [form] = Form.useForm<HostInput>();
 
@@ -171,6 +174,31 @@ export default function Hosts() {
 
   const credentialOptions = (credentials as Credential[]).map((c) => ({ value: c.id, label: c.name }));
 
+  const exportCSV = () => {
+    const header = ["主机名称", "地址", "端口", "分组", "标签", "状态", "备注", "最近测试"];
+    const lines = hosts.map((h) =>
+      [
+        h.name,
+        h.address,
+        String(h.port),
+        h.group_name || "",
+        h.tags.join("|"),
+        h.enabled ? "启用" : "停用",
+        h.note,
+        h.last_test_at ? dayjs(h.last_test_at).format("YYYY-MM-DD HH:mm") : "",
+      ]
+        .map((v) => `"${String(v).replace(/"/g, '""')}"`)
+        .join(","),
+    );
+    const content = `\uFEFF${header.join(",")}\n${lines.join("\n")}\n`;
+    const url = URL.createObjectURL(new Blob([content], { type: "text/csv;charset=utf-8" }));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "主机列表.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div>
       <PageHeader
@@ -178,6 +206,16 @@ export default function Hosts() {
         subtitle={`共 ${data?.total ?? hosts.length} 台`}
         extra={
           <>
+            {isAdmin && (
+              <Button icon={<DownloadOutlined />} onClick={exportCSV}>
+                导出
+              </Button>
+            )}
+            {isAdmin && (
+              <Button icon={<ImportOutlined />} onClick={() => setImportOpen(true)}>
+                导入
+              </Button>
+            )}
             {isAdmin && (
               <Button type="primary" onClick={() => openEdit(null)}>
                 新增主机
@@ -190,16 +228,59 @@ export default function Hosts() {
         }
       />
 
+      <div style={{ display: "flex", gap: 16, alignItems: "flex-start" }}>
+        <Card
+          size="small"
+          title="分组"
+          style={{ width: 230, flex: "0 0 230px" }}
+          styles={{ body: { padding: 8 } }}
+        >
+          <div
+            onClick={() => setFilters((f) => ({ ...f, group_id: undefined }))}
+            style={{
+              padding: "7px 10px",
+              borderRadius: 6,
+              cursor: "pointer",
+              background: filters.group_id ? undefined : "#e6f4ff",
+              color: filters.group_id ? undefined : "#1677ff",
+              display: "flex",
+              justifyContent: "space-between",
+              marginBottom: 2,
+            }}
+          >
+            <span>全部主机</span>
+            <span style={{ color: "#8c8c8c" }}>
+              {filters.group_id ? groups.reduce((sum, g) => sum + g.host_count, 0) : data?.total ?? hosts.length}
+            </span>
+          </div>
+          {groups.map((g) => {
+            const selected = filters.group_id === g.id;
+            return (
+              <div
+                key={g.id}
+                onClick={() => setFilters((f) => ({ ...f, group_id: g.id }))}
+                style={{
+                  padding: "7px 10px",
+                  borderRadius: 6,
+                  cursor: "pointer",
+                  background: selected ? "#e6f4ff" : undefined,
+                  color: selected ? "#1677ff" : undefined,
+                  display: "flex",
+                  justifyContent: "space-between",
+                }}
+              >
+                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {g.name}
+                </span>
+                <span style={{ color: "#8c8c8c" }}>{g.host_count}</span>
+              </div>
+            );
+          })}
+        </Card>
+
+        <div style={{ flex: 1, minWidth: 0 }}>
       <Card size="small" style={{ marginBottom: 16 }} styles={{ body: { padding: 12 } }}>
         <Space wrap>
-        <Select
-          allowClear
-          placeholder="分组"
-          style={{ width: 150 }}
-          value={filters.group_id}
-          onChange={(v) => setFilters((f) => ({ ...f, group_id: v }))}
-          options={groups.map((g) => ({ value: g.id, label: g.name }))}
-        />
         <Input
           allowClear
           placeholder="标签"
@@ -305,6 +386,8 @@ export default function Hosts() {
           },
         ]}
       />
+        </div>
+      </div>
 
       <Drawer
         open={!!viewing}
@@ -594,6 +677,17 @@ export default function Hosts() {
           ]}
         />
       </Modal>
+
+      <HostImportModal
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        groups={groups}
+        credentials={credentials}
+        onImported={() => {
+          void qc.invalidateQueries({ queryKey: ["hosts"] });
+          void qc.invalidateQueries({ queryKey: ["host-groups"] });
+        }}
+      />
     </div>
   );
 }

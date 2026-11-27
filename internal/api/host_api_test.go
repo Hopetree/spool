@@ -213,3 +213,50 @@ func TestGroupApi(t *testing.T) {
 		t.Fatalf("operator group create status = %d", w.Code)
 	}
 }
+
+func TestHostImportApi(t *testing.T) {
+	e := newTestEnv(t)
+	admin := adminCookie(t, e)
+	cred := createTestCredential(t, e, admin)
+
+	w := e.do(t, http.MethodPost, "/api/v1/hosts/import", map[string]any{
+		"credential_id": cred["id"],
+		"rows": []map[string]any{
+			{"name": "batch-1", "address": "10.0.1.1", "port": 22, "tags": []string{"batch"}},
+			{"name": "batch-2", "address": "10.0.1.2", "port": 2222},
+			{"name": "batch-1", "address": "10.0.1.3", "port": 22},
+			{"name": "batch-3", "address": "", "port": 22},
+		},
+	}, admin)
+	if w.Code != http.StatusOK {
+		t.Fatalf("import status = %d, body = %s", w.Code, w.Body.String())
+	}
+	var res struct {
+		Created int `json:"created"`
+		Failed  int `json:"failed"`
+		Errors  []struct {
+			Row     int    `json:"row"`
+			Message string `json:"message"`
+		} `json:"errors"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &res); err != nil {
+		t.Fatal(err)
+	}
+	if res.Created != 2 || res.Failed != 2 || len(res.Errors) != 2 {
+		t.Fatalf("import result = %+v", res)
+	}
+	if res.Errors[0].Row != 4 || res.Errors[1].Row != 5 {
+		t.Fatalf("error rows = %+v", res.Errors)
+	}
+	w = e.do(t, http.MethodGet, "/api/v1/hosts?keyword=batch-", nil, admin)
+	if w.Code != http.StatusOK {
+		t.Fatalf("list status = %d", w.Code)
+	}
+	var page struct {
+		Total int `json:"total"`
+	}
+	_ = json.Unmarshal(w.Body.Bytes(), &page)
+	if page.Total != 2 {
+		t.Fatalf("imported hosts total = %d", page.Total)
+	}
+}

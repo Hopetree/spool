@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 
@@ -146,6 +147,80 @@ func createHostHandler(d Deps) gin.HandlerFunc {
 			Summary: map[string]any{"address": created.Address, "port": created.Port},
 		})
 		c.JSON(http.StatusCreated, sanitizeHost(*created, u.Role))
+	}
+}
+
+type hostImportRow struct {
+	Name    string   `json:"name"`
+	Address string   `json:"address"`
+	Port    int      `json:"port"`
+	Tags    []string `json:"tags"`
+	Note    string   `json:"note"`
+	Enabled *bool    `json:"enabled"`
+}
+
+type hostImportInput struct {
+	GroupID      string          `json:"group_id"`
+	CredentialID string          `json:"credential_id"`
+	Rows         []hostImportRow `json:"rows"`
+}
+
+// importHostsHandler creates hosts from a parsed spreadsheet. Rows are
+// independent: invalid or duplicate rows are reported without aborting the
+// rest of the batch.
+func importHostsHandler(d Deps) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var in hostImportInput
+		if err := c.ShouldBindJSON(&in); err != nil {
+			fail(c, http.StatusBadRequest, "validation_failed", "请求格式不正确", nil)
+			return
+		}
+		if strings.TrimSpace(in.CredentialID) == "" {
+			fail(c, http.StatusBadRequest, "validation_failed", "请选择登录凭据", nil)
+			return
+		}
+		if len(in.Rows) == 0 {
+			fail(c, http.StatusBadRequest, "validation_failed", "导入数据为空", nil)
+			return
+		}
+		if len(in.Rows) > 500 {
+			fail(c, http.StatusBadRequest, "validation_failed", "单次最多导入 500 台主机", nil)
+			return
+		}
+		u := currentUser(c)
+		type rowError struct {
+			Row     int    `json:"row"`
+			Message string `json:"message"`
+		}
+		failures := make([]rowError, 0)
+		created := 0
+		for i, row := range in.Rows {
+			enabled := true
+			if row.Enabled != nil {
+				enabled = *row.Enabled
+			}
+			_, err := d.Hosts.Create(c.Request.Context(), host.Input{
+				Name:         strings.TrimSpace(row.Name),
+				Address:      strings.TrimSpace(row.Address),
+				Port:         row.Port,
+				GroupID:      in.GroupID,
+				CredentialID: in.CredentialID,
+				Enabled:      enabled,
+				Note:         row.Note,
+				Tags:         row.Tags,
+			})
+			if err != nil {
+				failures = append(failures, rowError{Row: i + 2, Message: err.Error()})
+				continue
+			}
+			created++
+		}
+		writeAudit(c, d, audit.Entry{
+			ActorID: u.ID, ActorName: u.Username, Action: "host.import",
+			ResourceType: "host", ResourceName: "批量导入",
+			Summary: map[string]any{"created": created, "failed": len(failures), "group_id": in.GroupID},
+		})
+		ok(c, gin.H{"created": created, "failed": len(failures), "errors": failures})
 	}
 }
 

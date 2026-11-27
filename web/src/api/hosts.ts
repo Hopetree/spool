@@ -90,6 +90,29 @@ export function listHosts(filters: HostFilters = {}): Promise<HostList> {
   return request<HostList>("GET", `/hosts${qs(filters)}`);
 }
 
+export interface HostImportRow {
+  name: string;
+  address: string;
+  port: number;
+  tags: string[];
+  note: string;
+  enabled?: boolean;
+}
+
+export interface HostImportResult {
+  created: number;
+  failed: number;
+  errors: { row: number; message: string }[];
+}
+
+export function importHosts(input: {
+  group_id: string;
+  credential_id: string;
+  rows: HostImportRow[];
+}): Promise<HostImportResult> {
+  return request<HostImportResult>("POST", "/hosts/import", input);
+}
+
 export function getHost(id: string): Promise<Host> {
   return request<Host>("GET", `/hosts/${id}`);
 }
