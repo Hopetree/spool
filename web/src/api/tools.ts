@@ -1,7 +1,12 @@
 import { request } from "./client";
 
-export type ParamType = "string" | "int" | "bool" | "select";
+export type ParamType = "string" | "int" | "bool" | "select" | "host";
 export type ToolType = "shell" | "python";
+
+export interface HostParam {
+  label: string;
+  default_host_ids: string[];
+}
 
 export interface ToolParam {
   name: string;
@@ -28,6 +33,7 @@ export interface ToolSummary {
   content_hash: string;
   param_count: number;
   params: ToolParam[];
+  host_param: HostParam;
   created_at: number;
   updated_at: number;
 }
@@ -40,6 +46,7 @@ export interface ToolVersion {
   interpreter: string;
   content: string;
   params: ToolParam[];
+  host_param: HostParam;
   prepare_command: string;
   timeout_sec: number;
   sudo: boolean;
@@ -63,6 +70,7 @@ export interface ToolInput {
   content: string;
   prepare_command: string;
   params: ToolParam[];
+  host_param: HostParam;
   timeout_sec: number;
   sudo: boolean;
   change_note: string;

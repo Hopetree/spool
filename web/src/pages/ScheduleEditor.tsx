@@ -31,7 +31,6 @@ import {
 import { getTool, listTools, type ToolParam } from "../api/tools";
 import PageHeader from "../components/PageHeader";
 import { describeCron } from "../utils/cron";
-import { flowHostInputs } from "../utils/flowParams";
 import { useAuthStore } from "../stores/auth";
 
 interface FormValues {
@@ -40,7 +39,6 @@ interface FormValues {
   target_ref_id: string;
   params?: Record<string, string>;
   host_ids: string[];
-  node_host_ids?: Record<string, string[]>;
   cron_expr: string;
   concurrency_policy: ConcurrencyPolicy;
   notify_channel_ids?: string[];
@@ -55,7 +53,41 @@ const presets = [
   { value: "0 9 * * 1", label: "每周一 09:00" },
 ];
 
-function paramInput(p: ToolParam, editing: boolean): ReactNode {
+function parseHostIDs(value: string | undefined): string[] {
+  try {
+    const parsed = JSON.parse(value || "[]");
+    return Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+function HostParamSelect({
+  value,
+  onChange,
+  hosts,
+}: {
+  value?: string;
+  onChange?: (value: string) => void;
+  hosts: { id: string; name: string; address: string }[];
+}) {
+  return (
+    <Select
+      mode="multiple"
+      allowClear
+      optionFilterProp="label"
+      placeholder="选择执行主机"
+      value={parseHostIDs(value)}
+      onChange={(ids) => onChange?.(JSON.stringify(ids))}
+      options={hosts.map((h) => ({ value: h.id, label: `${h.name} (${h.address})` }))}
+    />
+  );
+}
+
+function paramInput(p: ToolParam, editing: boolean, hosts: { id: string; name: string; address: string }[]): ReactNode {
+  if (p.type === "host") {
+    return <HostParamSelect hosts={hosts} />;
+  }
   if (p.type === "bool") {
     return (
       <Select
@@ -116,18 +148,7 @@ export default function ScheduleEditor() {
     enabled: kind === "flow" && !!targetRef,
   });
   const params: ToolParam[] = kind === "tool" ? toolDetail?.version.params ?? [] : flowDetail?.params ?? [];
-  const flowParamNodes = (flowDetail?.nodes ?? []).map((node) => ({
-    id: node.id,
-    kind: node.type,
-    name: node.name,
-    toolID: node.tool_id,
-    hostSource: node.host_source ?? ((node.host_ids ?? []).length > 0 ? "fixed" : "default"),
-    hostIDs: node.host_ids ?? [],
-    hostRefNodeID: node.host_ref_node_id ?? "",
-    mapping: node.mapping ?? {},
-  }));
-  const flowHostInfo = flowHostInputs(flowParamNodes);
-  const hostsRequired = kind !== "flow" || flowHostInfo.needsDefaultHosts;
+  const hostsRequired = kind !== "flow";
 
   const tools = (toolPage?.items ?? []).filter((t) => t.enabled);
   const flows = (flowPage?.items ?? []).filter((f) => f.enabled);
@@ -141,7 +162,6 @@ export default function ScheduleEditor() {
       target_ref_id: detail.target_ref_id,
       params: { ...detail.params },
       host_ids: detail.host_ids,
-      node_host_ids: { ...detail.node_host_ids },
       cron_expr: detail.cron_expr,
       concurrency_policy: detail.concurrency_policy,
       notify_channel_ids: detail.notify_channel_ids,
@@ -178,7 +198,6 @@ export default function ScheduleEditor() {
         target_ref_id: values.target_ref_id,
         params: values.params ?? {},
         host_ids: values.host_ids ?? [],
-        node_host_ids: values.node_host_ids ?? {},
         cron_expr: values.cron_expr,
         concurrency_policy: values.concurrency_policy,
         notify_channel_ids: values.notify_channel_ids ?? [],
@@ -236,7 +255,7 @@ export default function ScheduleEditor() {
             </Form.Item>
             <Form.Item name="target_kind" label="执行对象类型" style={{ width: 140 }}>
               <Select
-                onChange={() => form.setFieldsValue({ target_ref_id: "", params: {}, node_host_ids: {} })}
+                onChange={() => form.setFieldsValue({ target_ref_id: "", params: {} })}
                 options={[
                   { value: "tool", label: "工具" },
                   { value: "flow", label: "流程" },
@@ -305,13 +324,13 @@ export default function ScheduleEditor() {
           {hostsRequired && (
             <Form.Item
               name="host_ids"
-              label={kind === "flow" ? "默认执行主机" : "目标主机"}
-              rules={[{ required: true, message: kind === "flow" ? "请选择默认执行主机" : "请选择主机" }]}
+              label="目标主机"
+              rules={[{ required: true, message: "请选择主机" }]}
             >
               <Select
                 mode="multiple"
                 optionFilterProp="label"
-                placeholder={kind === "flow" ? "选择默认执行主机" : "选择一台或多台主机"}
+                placeholder="选择一台或多台主机"
                 options={hosts.map((h) => ({
                   value: h.id,
                   label: `${h.name} (${h.address})${h.enabled ? "" : " [停用]"}`,
@@ -319,25 +338,6 @@ export default function ScheduleEditor() {
               />
             </Form.Item>
           )}
-          {kind === "flow" &&
-            flowHostInfo.inputNodes.map((node) => (
-              <Form.Item
-                key={node.id}
-                name={["node_host_ids", node.id]}
-                label={`执行主机 · ${node.name || node.id}`}
-                rules={[{ required: true, message: "请选择执行主机" }]}
-              >
-                <Select
-                  mode="multiple"
-                  optionFilterProp="label"
-                  placeholder="选择该节点的执行主机"
-                  options={hosts.map((h) => ({
-                    value: h.id,
-                    label: `${h.name} (${h.address})${h.enabled ? "" : " [停用]"}`,
-                  }))}
-                />
-              </Form.Item>
-            ))}
           {params.length === 0 ? (
             <Typography.Text type="secondary">该执行对象没有参数</Typography.Text>
           ) : (
@@ -352,9 +352,20 @@ export default function ScheduleEditor() {
                   </Space>
                 }
                 extra={p.description || (p.sensitive ? "敏感值保存后不再显示，留空表示沿用原值" : undefined)}
-                rules={p.required && !p.sensitive ? [{ required: true, message: `请输入 ${p.label || p.name}` }] : []}
+                rules={
+                  p.type === "host"
+                    ? [{
+                        validator: (_, value) =>
+                          parseHostIDs(value).length > 0
+                            ? Promise.resolve()
+                            : Promise.reject(new Error("请选择执行主机")),
+                      }]
+                    : p.required && !p.sensitive
+                      ? [{ required: true, message: `请输入 ${p.label || p.name}` }]
+                      : []
+                }
               >
-                {paramInput(p, !!id)}
+                {paramInput(p, !!id, hosts)}
               </Form.Item>
             ))
           )}

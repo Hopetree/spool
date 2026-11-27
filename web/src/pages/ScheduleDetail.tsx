@@ -12,7 +12,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams } from "react-router-dom";
 import dayjs from "dayjs";
 import { ApiError } from "../api/client";
-import { getFlow } from "../api/flows";
 import { listHosts } from "../api/hosts";
 import { listChannels } from "../api/notify";
 import {
@@ -52,14 +51,6 @@ export default function ScheduleDetail() {
     queryFn: listChannels,
     enabled: isAdmin,
   });
-  const nodeHostIDs = detail?.node_host_ids ?? {};
-  const { data: flowDetail } = useQuery({
-    queryKey: ["flow", detail?.target_ref_id, "schedule-detail"],
-    queryFn: () => getFlow(detail!.target_ref_id),
-    enabled: detail?.target_kind === "flow" && Object.keys(nodeHostIDs).length > 0,
-  });
-  const flowNodeName = (nodeID: string) =>
-    flowDetail?.nodes.find((node) => node.id === nodeID)?.name ?? nodeID;
 
   const hostName = (hostID: string) =>
     hostPage?.items.find((h) => h.id === hostID)?.name ?? hostID;
@@ -194,23 +185,6 @@ export default function ScheduleDetail() {
                   </Space>
                 ),
               },
-              ...(Object.keys(nodeHostIDs).length > 0
-                ? [
-                    {
-                      key: "nodeHosts",
-                      label: "节点执行主机",
-                      children: (
-                        <Space wrap>
-                          {Object.entries(nodeHostIDs).map(([nodeID, hostIDs]) => (
-                            <Tag key={nodeID}>
-                              {flowNodeName(nodeID)}：{hostIDs.map(hostName).join("、")}
-                            </Tag>
-                          ))}
-                        </Space>
-                      ),
-                    },
-                  ]
-                : []),
               {
                 key: "params",
                 label: "参数",

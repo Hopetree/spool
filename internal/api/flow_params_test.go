@@ -20,16 +20,14 @@ func TestFlowParameterSourcesApi(t *testing.T) {
 		"nodes": []map[string]any{
 			{"id": "start", "type": "start", "name": "开始", "x": 0, "y": 0},
 			{
-				"id": "step1", "type": "tool", "name": "准备", "tool_id": toolID,
-				"host_source": "fixed", "host_ids": []string{"h1"}, "x": 240, "y": 0,
+				"id": "step1", "type": "tool", "name": "准备", "tool_id": toolID, "x": 240, "y": 0,
 				"mapping": map[string]any{
 					"ENV":   map[string]string{"source": "input", "input_name": "ENV", "input_label": "环境"},
 					"TOKEN": map[string]string{"source": "input", "input_name": "SECRET", "input_label": "访问令牌"},
 				},
 			},
 			{
-				"id": "step2", "type": "tool", "name": "执行", "tool_id": toolID,
-				"host_source": "node", "host_ref_node_id": "step1", "x": 480, "y": 0,
+				"id": "step2", "type": "tool", "name": "执行", "tool_id": toolID, "x": 480, "y": 0,
 				"mapping": map[string]any{
 					"ENV":   map[string]string{"source": "node", "ref_node_id": "step1", "ref_param": "ENV"},
 					"TOKEN": map[string]string{"source": "node", "ref_node_id": "step1", "ref_param": "TOKEN"},
@@ -71,9 +69,6 @@ func TestFlowParameterSourcesApi(t *testing.T) {
 		node := raw.(map[string]any)
 		if node["id"] != "step2" {
 			continue
-		}
-		if node["host_source"] != "node" || node["host_ref_node_id"] != "step1" {
-			t.Fatalf("step2 hosts = %+v", node)
 		}
 		mapping := node["mapping"].(map[string]any)
 		env := mapping["ENV"].(map[string]any)

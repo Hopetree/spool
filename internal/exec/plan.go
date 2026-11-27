@@ -6,7 +6,6 @@ type Plan struct {
 	Name           string     `json:"name"`
 	FailurePolicy  string     `json:"failure_policy,omitempty"` // abort | continue
 	MaxDurationSec int        `json:"max_duration_sec,omitempty"`
-	DefaultHostIDs []string   `json:"default_host_ids,omitempty"`
 	Stages         []Stage    `json:"stages,omitempty"`
 	Graph          *GraphPlan `json:"graph,omitempty"`
 	// PerHostGraph preserves the legacy behavior for flows whose nodes do not

@@ -28,7 +28,8 @@ func createTool(t *testing.T, tools *tool.Service, name string, params []tool.Pa
 	t.Helper()
 	d, err := tools.Create(context.Background(), tool.Input{
 		Name: name, Type: "shell", Interpreter: "/bin/bash", Content: "echo " + name,
-		Params: params, TimeoutSec: 30,
+		HostParam: tool.HostParam{DefaultHostIDs: []string{"h1"}},
+		Params:    params, TimeoutSec: 30,
 	}, "admin")
 	if err != nil {
 		t.Fatal(err)
@@ -47,14 +48,16 @@ func baseFlowInput(toolA, toolB string) Input {
 			{ID: "start", Type: "start", Name: "开始"},
 			{
 				ID: "n1", Type: "tool", Name: "deploy", ToolID: toolA,
-				HostIDs: []string{"h1", "h2"},
 				Mapping: map[string]Mapping{
-					"ENV":   {Source: "flow", Value: "ENV"},
-					"TOKEN": {Source: "flow", Value: "SECRET"},
+					"SPOOL_HOST": {Source: "literal", Value: `["h1","h2"]`},
+					"ENV":        {Source: "flow", Value: "ENV"},
+					"TOKEN":      {Source: "flow", Value: "SECRET"},
 				},
 				TimeoutSec: 60, RetryCount: 1, RetryDelaySec: 2, X: 260, Y: 40,
 			},
-			{ID: "n2", Type: "tool", Name: "cleanup", ToolID: toolB, HostIDs: []string{"h2"}, X: 520, Y: 40},
+			{ID: "n2", Type: "tool", Name: "cleanup", ToolID: toolB, Mapping: map[string]Mapping{
+				"SPOOL_HOST": {Source: "literal", Value: `["h2"]`},
+			}, X: 520, Y: 40},
 		},
 		Edges: []EdgeInput{
 			{From: "start", To: "n1", Condition: CondAlways},
@@ -82,15 +85,6 @@ func TestCreateGetUpdateCopyDelete(t *testing.T) {
 	if created.Nodes[0].Type != NodeStart || created.Nodes[0].ID != "start" {
 		t.Fatalf("start node = %+v", created.Nodes[0])
 	}
-	for _, node := range created.Nodes {
-		if node.ID == "n1" && (len(node.HostIDs) != 2 || node.HostIDs[0] != "h1" || node.HostIDs[1] != "h2") {
-			t.Fatalf("n1 hosts = %v", node.HostIDs)
-		}
-		if node.ID == "n2" && (len(node.HostIDs) != 1 || node.HostIDs[0] != "h2") {
-			t.Fatalf("n2 hosts = %v", node.HostIDs)
-		}
-	}
-
 	list, total, err := svc.List(ctx, ListFilter{Page: 1, PageSize: 10})
 	if err != nil || total != 1 || len(list) != 1 || list[0].NodeCount != 2 {
 		t.Fatalf("list: %v total=%d", err, total)
@@ -178,7 +172,7 @@ func TestCompileBuildsGraph(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	res, err := svc.Compile(ctx, created.ID, map[string]string{"ENV": "prod", "SECRET": "s3cr3t"}, nil)
+	res, err := svc.Compile(ctx, created.ID, map[string]string{"ENV": "prod", "SECRET": "s3cr3t"})
 	if err != nil {
 		t.Fatalf("compile: %v", err)
 	}
@@ -226,7 +220,7 @@ func TestCompileDisabledFlowAndTool(t *testing.T) {
 	if err := svc.SetEnabled(ctx, created.ID, false); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := svc.Compile(ctx, created.ID, map[string]string{"SECRET": "x"}, nil); !errors.Is(err, ErrDisabled) {
+	if _, err := svc.Compile(ctx, created.ID, map[string]string{"SECRET": "x"}); !errors.Is(err, ErrDisabled) {
 		t.Fatalf("err = %v, want ErrDisabled", err)
 	}
 	if err := svc.SetEnabled(ctx, created.ID, true); err != nil {
@@ -235,7 +229,7 @@ func TestCompileDisabledFlowAndTool(t *testing.T) {
 	if err := tools.SetEnabled(ctx, a.ID, false); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := svc.Compile(ctx, created.ID, map[string]string{"SECRET": "x"}, nil); err == nil {
+	if _, err := svc.Compile(ctx, created.ID, map[string]string{"SECRET": "x"}); err == nil {
 		t.Fatal("expected disabled tool error")
 	}
 }

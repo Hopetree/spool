@@ -37,9 +37,6 @@ type nodeRow struct {
 	Type          string  `db:"type"`
 	Name          string  `db:"name"`
 	ToolID        string  `db:"tool_id"`
-	HostSource    string  `db:"host_source"`
-	HostIDsJSON   string  `db:"host_ids_json"`
-	HostRefNodeID string  `db:"host_ref_node_id"`
 	MappingJSON   string  `db:"mapping_json"`
 	TimeoutSec    int     `db:"timeout_sec"`
 	RetryCount    int     `db:"retry_count"`
@@ -149,7 +146,7 @@ func (s *Service) Get(ctx context.Context, id string) (*Detail, error) {
 		return nil, fmt.Errorf("get flow: %w", err)
 	}
 	rows := []nodeRow{}
-	err = s.db.SelectContext(ctx, &rows, `SELECT n.id, n.flow_id, n.node_key, n.type, n.name, n.tool_id, n.host_source, n.host_ids_json, n.host_ref_node_id, n.mapping_json,
+	err = s.db.SelectContext(ctx, &rows, `SELECT n.id, n.flow_id, n.node_key, n.type, n.name, n.tool_id, n.mapping_json,
 		n.timeout_sec, n.retry_count, n.retry_delay_sec, n.x, n.y,
 		COALESCE(t.name, '') AS tool_name, COALESCE(v.type, '') AS tool_type
 		FROM flow_nodes n
@@ -172,24 +169,8 @@ func (s *Service) Get(ctx context.Context, id string) (*Detail, error) {
 		if r.MappingJSON != "" {
 			_ = json.Unmarshal([]byte(r.MappingJSON), &mapping)
 		}
-		hostIDs := []string{}
-		if r.HostIDsJSON != "" {
-			_ = json.Unmarshal([]byte(r.HostIDsJSON), &hostIDs)
-		}
-		if hostIDs == nil {
-			hostIDs = []string{}
-		}
-		hostSource := r.HostSource
-		if hostSource == "" {
-			if len(hostIDs) > 0 {
-				hostSource = HostSourceFixed
-			} else {
-				hostSource = HostSourceDefault
-			}
-		}
 		detail.Nodes = append(detail.Nodes, Node{
 			ID: r.NodeKey, Type: r.Type, Name: r.Name, ToolID: r.ToolID,
-			HostSource: hostSource, HostIDs: hostIDs, HostRefNodeID: r.HostRefNodeID,
 			ToolName: r.ToolName, ToolType: r.ToolType, Mapping: mapping,
 			TimeoutSec: r.TimeoutSec, RetryCount: r.RetryCount, RetryDelaySec: r.RetryDelaySec,
 			X: r.X, Y: r.Y,
@@ -231,8 +212,9 @@ func validateAndDeriveParams(in *Input, toolsByNode map[string]*tool.Detail) err
 			continue
 		}
 		td := toolsByNode[node.ID]
-		declared := make(map[string]bool, len(td.Version.Params))
-		for _, p := range td.Version.Params {
+		flowParams := td.Version.FlowParams()
+		declared := make(map[string]bool, len(flowParams))
+		for _, p := range flowParams {
 			declared[p.Name] = true
 		}
 		for key := range node.Mapping {
@@ -243,9 +225,6 @@ func validateAndDeriveParams(in *Input, toolsByNode map[string]*tool.Detail) err
 	}
 	resolver, err := newParamResolver(in.Nodes, in.Edges, toolsByNode)
 	if err != nil {
-		return err
-	}
-	if err := validateHostReferences(in.Nodes, resolver.ancestors); err != nil {
 		return err
 	}
 	inputs, err := deriveInputs(resolver, true)
@@ -270,18 +249,14 @@ func (s *Service) insertGraph(ctx context.Context, tx *sqlx.Tx, flowID string, i
 		if err != nil {
 			return fmt.Errorf("marshal mapping: %w", err)
 		}
-		hostIDs, err := json.Marshal(node.HostIDs)
-		if err != nil {
-			return fmt.Errorf("marshal host ids: %w", err)
-		}
 		dbID := store.NewULID()
 		if node.Type == NodeStart {
 			dbID = "start-" + flowID
 		}
 		_, err = tx.ExecContext(ctx, `INSERT INTO flow_nodes
-			(id, flow_id, node_key, type, name, tool_id, host_source, host_ids_json, host_ref_node_id, mapping_json, timeout_sec, retry_count, retry_delay_sec, enabled, x, y)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`,
-			dbID, flowID, node.ID, node.Type, node.Name, node.ToolID, node.HostSource, string(hostIDs), node.HostRefNodeID, string(mapping),
+			(id, flow_id, node_key, type, name, tool_id, mapping_json, timeout_sec, retry_count, retry_delay_sec, enabled, x, y)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`,
+			dbID, flowID, node.ID, node.Type, node.Name, node.ToolID, string(mapping),
 			node.TimeoutSec, node.RetryCount, node.RetryDelaySec, node.X, node.Y)
 		if err != nil {
 			return fmt.Errorf("insert node: %w", err)
@@ -426,8 +401,7 @@ func (s *Service) Copy(ctx context.Context, id, actorID string) (*Detail, error)
 	}
 	for _, n := range src.Nodes {
 		in.Nodes = append(in.Nodes, NodeInput{
-			ID: n.ID, Type: n.Type, Name: n.Name, ToolID: n.ToolID,
-			HostSource: n.HostSource, HostIDs: n.HostIDs, HostRefNodeID: n.HostRefNodeID, Mapping: n.Mapping,
+			ID: n.ID, Type: n.Type, Name: n.Name, ToolID: n.ToolID, Mapping: n.Mapping,
 			TimeoutSec: n.TimeoutSec, RetryCount: n.RetryCount, RetryDelaySec: n.RetryDelaySec,
 			X: n.X, Y: n.Y,
 		})
@@ -473,7 +447,7 @@ type CompileResult struct {
 }
 
 // Compile resolves the latest tool versions and builds a graph execution plan.
-func (s *Service) Compile(ctx context.Context, id string, values map[string]string, nodeHostIDs map[string][]string) (*CompileResult, error) {
+func (s *Service) Compile(ctx context.Context, id string, values map[string]string) (*CompileResult, error) {
 	detail, err := s.Get(ctx, id)
 	if err != nil {
 		return nil, err
@@ -492,10 +466,6 @@ func (s *Service) Compile(ctx context.Context, id string, values map[string]stri
 		return nil, err
 	}
 	inputs, err := deriveInputs(resolver, false)
-	if err != nil {
-		return nil, err
-	}
-	hostConfigs, err := resolveHostConfigs(nodes, resolver.ancestors, nodeHostIDs)
 	if err != nil {
 		return nil, err
 	}
@@ -534,7 +504,8 @@ func (s *Service) Compile(ctx context.Context, id string, values map[string]stri
 		td := toolsByNode[node.ID]
 		nodePlain := map[string]string{}
 		nodeSensitive := map[string]string{}
-		for _, p := range td.Version.Params {
+		hostIDs := []string{}
+		for _, p := range td.Version.FlowParams() {
 			res, err := resolver.resolve(node.ID, p.Name)
 			if err != nil {
 				return nil, err
@@ -555,6 +526,17 @@ func (s *Service) Compile(ctx context.Context, id string, values map[string]stri
 					return nil, invalid(fmt.Sprintf("节点 %q 的参数校验失败：%s", node.Name, err.Error()))
 				}
 				value = validated[p.Name]
+			}
+			if p.Type == "host" {
+				ids, err := tool.ParseHostIDs(value)
+				if err != nil {
+					return nil, invalid(fmt.Sprintf("节点 %q 的执行主机参数校验失败：%s", node.Name, err.Error()))
+				}
+				if len(ids) == 0 {
+					return nil, invalid(fmt.Sprintf("节点 %q 的执行主机参数不能为空", node.Name))
+				}
+				hostIDs = ids
+				continue
 			}
 			secret := res.Sensitive
 			if res.Kind == "input" && inputSensitive[res.InputName] {
@@ -579,7 +561,7 @@ func (s *Service) Compile(ctx context.Context, id string, values map[string]stri
 			Interpreter: td.Version.Interpreter, Content: td.Version.Content,
 			PrepareCommand: td.Version.PrepareCommand, Sudo: td.Version.Sudo,
 			TimeoutSec: timeout, RetryCount: node.RetryCount, RetryDelaySec: node.RetryDelaySec,
-			HostIDs: hostConfigs[node.ID].HostIDs,
+			HostIDs: hostIDs,
 			Params:  nodePlain, SensitiveParams: nodeSensitive,
 			X: node.X, Y: node.Y,
 		})

@@ -3,6 +3,7 @@ package tool
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"regexp"
@@ -27,6 +28,16 @@ func invalid(msg string) error { return &ValidationError{Message: msg} }
 
 var envNameRe = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
+// HostParamName is the reserved parameter name used to carry a tool's
+// execution host selection through the flow parameter model.
+const HostParamName = "SPOOL_HOST"
+
+// HostParam configures the built-in execution host parameter of a tool.
+type HostParam struct {
+	Label          string   `json:"label"`
+	DefaultHostIDs []string `json:"default_host_ids"`
+}
+
 // Param declares one environment-variable input.
 type Param struct {
 	Name        string   `json:"name"`
@@ -41,40 +52,65 @@ type Param struct {
 
 // Tool is the list/summary view.
 type Tool struct {
-	ID          string  `json:"id"`
-	Name        string  `json:"name"`
-	Category    string  `json:"category"`
-	Description string  `json:"description"`
-	Enabled     bool    `json:"enabled"`
-	VersionNo   int     `json:"version_no"`
-	Type        string  `json:"type"`
-	Interpreter string  `json:"interpreter"`
-	TimeoutSec  int     `json:"timeout_sec"`
-	Sudo        bool    `json:"sudo"`
-	ContentHash string  `json:"content_hash"`
-	ParamCount  int     `json:"param_count"`
-	Params      []Param `json:"params"`
-	CreatedAt   int64   `json:"created_at"`
-	UpdatedAt   int64   `json:"updated_at"`
+	ID          string    `json:"id"`
+	Name        string    `json:"name"`
+	Category    string    `json:"category"`
+	Description string    `json:"description"`
+	Enabled     bool      `json:"enabled"`
+	VersionNo   int       `json:"version_no"`
+	Type        string    `json:"type"`
+	Interpreter string    `json:"interpreter"`
+	TimeoutSec  int       `json:"timeout_sec"`
+	Sudo        bool      `json:"sudo"`
+	ContentHash string    `json:"content_hash"`
+	ParamCount  int       `json:"param_count"`
+	Params      []Param   `json:"params"`
+	HostParam   HostParam `json:"host_param"`
+	CreatedAt   int64     `json:"created_at"`
+	UpdatedAt   int64     `json:"updated_at"`
 }
 
 // Version is an immutable tool revision.
 type Version struct {
-	ID             string  `json:"id"`
-	ToolID         string  `json:"tool_id"`
-	VersionNo      int     `json:"version_no"`
-	Type           string  `json:"type"`
-	Interpreter    string  `json:"interpreter"`
-	Content        string  `json:"content"`
-	Params         []Param `json:"params"`
-	PrepareCommand string  `json:"prepare_command"`
-	TimeoutSec     int     `json:"timeout_sec"`
-	Sudo           bool    `json:"sudo"`
-	ContentHash    string  `json:"content_hash"`
-	ChangeNote     string  `json:"change_note"`
-	CreatedBy      string  `json:"created_by"`
-	CreatedByName  string  `json:"created_by_name"`
-	CreatedAt      int64   `json:"created_at"`
+	ID             string    `json:"id"`
+	ToolID         string    `json:"tool_id"`
+	VersionNo      int       `json:"version_no"`
+	Type           string    `json:"type"`
+	Interpreter    string    `json:"interpreter"`
+	Content        string    `json:"content"`
+	Params         []Param   `json:"params"`
+	HostParam      HostParam `json:"host_param"`
+	PrepareCommand string    `json:"prepare_command"`
+	TimeoutSec     int       `json:"timeout_sec"`
+	Sudo           bool      `json:"sudo"`
+	ContentHash    string    `json:"content_hash"`
+	ChangeNote     string    `json:"change_note"`
+	CreatedBy      string    `json:"created_by"`
+	CreatedByName  string    `json:"created_by_name"`
+	CreatedAt      int64     `json:"created_at"`
+}
+
+// FlowParams returns the executable host parameter followed by the regular
+// tool parameters. Flows use this view so the host parameter participates in
+// the same default/fixed/input/reference resolution as other parameters.
+func (v Version) FlowParams() []Param {
+	label := strings.TrimSpace(v.HostParam.Label)
+	if label == "" {
+		label = "执行主机"
+	}
+	ids := v.HostParam.DefaultHostIDs
+	if ids == nil {
+		ids = []string{}
+	}
+	defaultValue, _ := json.Marshal(ids)
+	host := Param{
+		Name: HostParamName, Label: label, Type: "host", Required: true,
+		Default: string(defaultValue), Options: []string{},
+	}
+	out := make([]Param, 0, len(v.Params)+1)
+	out = append(out, host)
+	out = append(out, v.Params...)
+	return out
 }
 
 // Detail is a tool plus its current version.
@@ -93,6 +129,7 @@ type Input struct {
 	Content        string
 	PrepareCommand string
 	Params         []Param
+	HostParam      HostParam
 	TimeoutSec     int
 	Sudo           bool
 	ChangeNote     string
@@ -144,9 +181,9 @@ func ValidateParams(params []Param) error {
 		}
 		seen[p.Name] = true
 		switch p.Type {
-		case "string", "int", "bool", "select":
+		case "string", "int", "bool", "select", "host":
 		default:
-			return invalid(fmt.Sprintf("参数 %q 的类型必须是 string/int/bool/select", p.Name))
+			return invalid(fmt.Sprintf("参数 %q 的类型必须是 string/int/bool/select/host", p.Name))
 		}
 		if len(p.Label) > 64 {
 			return invalid(fmt.Sprintf("参数 %q 的显示名不能超过 64 个字符", p.Name))
@@ -156,6 +193,9 @@ func ValidateParams(params []Param) error {
 		}
 		if p.Type == "select" && len(p.Options) == 0 {
 			return invalid(fmt.Sprintf("参数 %q 是 select，必须提供选项", p.Name))
+		}
+		if p.Type == "host" && len(p.Options) > 0 {
+			return invalid(fmt.Sprintf("参数 %q 是主机类型，不能设置候选项", p.Name))
 		}
 		if p.Default != "" {
 			if err := validateValue(p, p.Default); err != nil {
@@ -168,6 +208,14 @@ func ValidateParams(params []Param) error {
 
 func validateValue(p Param, value string) error {
 	switch p.Type {
+	case "host":
+		ids, err := ParseHostIDs(value)
+		if err != nil {
+			return err
+		}
+		if len(ids) == 0 {
+			return invalid(fmt.Sprintf("参数 %q 至少需要选择一台主机", p.Name))
+		}
 	case "int":
 		if _, err := strconv.Atoi(value); err != nil {
 			return invalid(fmt.Sprintf("参数 %q 必须是整数", p.Name))
@@ -187,6 +235,33 @@ func validateValue(p Param, value string) error {
 	return nil
 }
 
+// ParseHostIDs parses the JSON host list used by host parameters.
+func ParseHostIDs(value string) ([]string, error) {
+	if value == "" || value == "null" {
+		return nil, nil
+	}
+	var ids []string
+	if err := json.Unmarshal([]byte(value), &ids); err != nil {
+		return nil, invalid("主机参数格式不正确")
+	}
+	out := make([]string, 0, len(ids))
+	seen := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		id = strings.TrimSpace(id)
+		if id == "" || seen[id] {
+			continue
+		}
+		seen[id] = true
+		out = append(out, id)
+	}
+	return out, nil
+}
+
+func emptyHostValue(value string) bool {
+	ids, err := ParseHostIDs(value)
+	return err == nil && len(ids) == 0
+}
+
 // ValidateValue checks one value against a parameter's type and options. It
 // does not apply the parameter default; callers use this when the value comes
 // from an execution input and must remain empty when not supplied.
@@ -202,8 +277,14 @@ func ValidateValues(params []Param, values map[string]string) (map[string]string
 	for _, p := range params {
 		known[p.Name] = true
 		value := values[p.Name]
+		if p.Type == "host" && emptyHostValue(value) {
+			value = ""
+		}
 		if value == "" {
 			value = p.Default
+		}
+		if p.Type == "host" && emptyHostValue(value) {
+			value = ""
 		}
 		if value == "" {
 			if p.Required {
@@ -312,8 +393,37 @@ func validateInput(in *Input) error {
 	if len(in.ChangeNote) > 200 {
 		return invalid("变更说明不能超过 200 个字符")
 	}
+	in.HostParam.Label = strings.TrimSpace(in.HostParam.Label)
+	if in.HostParam.Label == "" {
+		in.HostParam.Label = "执行主机"
+	}
+	if len(in.HostParam.Label) > 64 {
+		return invalid("执行主机参数的显示名称不能超过 64 个字符")
+	}
+	ids := make([]string, 0, len(in.HostParam.DefaultHostIDs))
+	seen := map[string]bool{}
+	for _, id := range in.HostParam.DefaultHostIDs {
+		id = strings.TrimSpace(id)
+		if id == "" || seen[id] {
+			continue
+		}
+		if len(id) > 64 {
+			return invalid("执行主机参数包含非法主机")
+		}
+		seen[id] = true
+		ids = append(ids, id)
+	}
+	if len(ids) > 100 {
+		return invalid("执行主机参数的默认主机不能超过 100 台")
+	}
+	in.HostParam.DefaultHostIDs = ids
 	if in.Params == nil {
 		in.Params = []Param{}
+	}
+	for _, p := range in.Params {
+		if p.Type == "host" || p.Name == HostParamName {
+			return invalid("执行主机参数由平台内置，不能添加到普通参数列表")
+		}
 	}
 	return ValidateParams(in.Params)
 }

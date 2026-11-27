@@ -2,7 +2,6 @@ import { request } from "./client";
 import type { ToolCategory, ToolParam } from "./tools";
 
 export type FlowNodeType = "start" | "tool";
-export type HostSource = "default" | "fixed" | "input" | "node";
 export type EdgeCondition =
   | "always"
   | "success"
@@ -22,9 +21,6 @@ export interface FlowNode {
   tool_id: string;
   tool_name: string;
   tool_type: string;
-  host_source: HostSource;
-  host_ids: string[];
-  host_ref_node_id?: string;
   mapping: Record<string, FlowMapping>;
   timeout_sec: number;
   retry_count: number;
@@ -65,9 +61,6 @@ export interface FlowNodeInput {
   type: FlowNodeType;
   name: string;
   tool_id: string;
-  host_source: HostSource;
-  host_ids: string[];
-  host_ref_node_id?: string;
   mapping: Record<string, FlowMapping>;
   timeout_sec: number;
   retry_count: number;

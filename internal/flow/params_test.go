@@ -73,7 +73,7 @@ func TestParameterSourcesAndReferences(t *testing.T) {
 
 	res, err := svc.Compile(ctx, created.ID, map[string]string{
 		"pkg_path": "/opt/pkg.tar.gz", "mode": "safe", "STALE": "ignored",
-	}, nil)
+	})
 	if err != nil {
 		t.Fatalf("compile: %v", err)
 	}
@@ -197,10 +197,10 @@ func TestSensitiveAndRequiredPropagation(t *testing.T) {
 	if !p.Sensitive || !p.Required || p.Label != "共享种子" {
 		t.Fatalf("derived input = %+v", p)
 	}
-	if _, err := svc.Compile(ctx, created.ID, nil, nil); err == nil {
+	if _, err := svc.Compile(ctx, created.ID, nil); err == nil {
 		t.Fatal("expected missing required input to fail")
 	}
-	res, err := svc.Compile(ctx, created.ID, map[string]string{"shared_seed": "s3cr3t"}, nil)
+	res, err := svc.Compile(ctx, created.ID, map[string]string{"shared_seed": "s3cr3t"})
 	if err != nil {
 		t.Fatalf("compile: %v", err)
 	}
@@ -290,7 +290,7 @@ func TestLegacyFlowMappingConversionAndFiltering(t *testing.T) {
 	if m.Source != "input" || m.InputName != "ENV" || m.InputLabel != "环境" {
 		t.Fatalf("mapping = %+v", m)
 	}
-	res, err := svc.Compile(ctx, created.ID, map[string]string{"ENV": "prod", "UNUSED": "ignored"}, nil)
+	res, err := svc.Compile(ctx, created.ID, map[string]string{"ENV": "prod", "UNUSED": "ignored"})
 	if err != nil {
 		t.Fatalf("compile legacy: %v", err)
 	}
@@ -314,7 +314,7 @@ func TestLegacyFlowMappingConversionAndFiltering(t *testing.T) {
 	if len(updated.Params) != 0 {
 		t.Fatalf("params after cleanup = %+v", updated.Params)
 	}
-	if _, err := svc.Compile(ctx, created.ID, map[string]string{"ENV": "stale", "UNUSED": "stale"}, nil); err != nil {
+	if _, err := svc.Compile(ctx, created.ID, map[string]string{"ENV": "stale", "UNUSED": "stale"}); err != nil {
 		t.Fatalf("compile after cleanup: %v", err)
 	}
 }
@@ -341,7 +341,7 @@ func TestLegacySensitiveFlowParameterKeepsSensitivity(t *testing.T) {
 	if len(created.Params) != 1 || !created.Params[0].Sensitive || created.Params[0].Label != "令牌" {
 		t.Fatalf("params = %+v", created.Params)
 	}
-	res, err := svc.Compile(ctx, created.ID, map[string]string{"SECRET": "s3cr3t"}, nil)
+	res, err := svc.Compile(ctx, created.ID, map[string]string{"SECRET": "s3cr3t"})
 	if err != nil {
 		t.Fatalf("compile: %v", err)
 	}
@@ -410,7 +410,7 @@ func TestExecutionInputDoesNotInheritToolDefault(t *testing.T) {
 	if len(created.Params) != 1 || created.Params[0].Default != "" {
 		t.Fatalf("params = %+v", created.Params)
 	}
-	res, err := svc.Compile(ctx, created.ID, nil, nil)
+	res, err := svc.Compile(ctx, created.ID, nil)
 	if err != nil {
 		t.Fatalf("compile: %v", err)
 	}

@@ -171,7 +171,6 @@ export interface RunFlowInput {
   ref_id: string;
   params: Record<string, string>;
   host_ids: string[];
-  node_host_ids: Record<string, string[]>;
 }
 
 export function runTool(input: RunToolInput): Promise<Execution> {

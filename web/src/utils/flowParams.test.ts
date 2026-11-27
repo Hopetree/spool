@@ -4,7 +4,6 @@ import {
   ancestorIDs,
   compatibleUpstreamParams,
   deriveInputs,
-  flowHostInputs,
   inputConflicts,
   resolveBinding,
   topologicalOrder,
@@ -27,6 +26,7 @@ function tool(id: string, name: string, params: ToolParam[]): ToolSummary {
     content_hash: "",
     param_count: params.length,
     params,
+    host_param: { label: "执行主机", default_host_ids: ["h1"] },
     created_at: 0,
     updated_at: 0,
   };
@@ -44,15 +44,12 @@ const tools = new Map([
 ]);
 
 const nodes: ParamFlowNode[] = [
-  { id: "start", kind: "start", name: "开始", toolID: "", hostSource: "default", hostIDs: [], hostRefNodeID: "", mapping: {} },
+  { id: "start", kind: "start", name: "开始", toolID: "", mapping: {} },
   {
     id: "a",
     kind: "tool",
     name: "A",
     toolID: "t1",
-    hostSource: "fixed",
-    hostIDs: ["h1"],
-    hostRefNodeID: "",
     mapping: {
       pkg_path: { source: "input", input_name: "pkg_path", input_label: "巡检包路径" },
       mode: { source: "input", input_name: "mode", input_label: "执行模式" },
@@ -63,9 +60,6 @@ const nodes: ParamFlowNode[] = [
     kind: "tool",
     name: "B",
     toolID: "t2",
-    hostSource: "node",
-    hostIDs: [],
-    hostRefNodeID: "a",
     mapping: {
       pkg_path: { source: "node", ref_node_id: "a", ref_param: "pkg_path" },
       work_dir: { source: "node", ref_node_id: "a", ref_param: "work_dir" },
@@ -131,18 +125,6 @@ describe("flow parameter helpers", () => {
     const labelConflicts = inputConflicts(duplicatedLabel, tools);
     expect(labelConflicts).toHaveLength(1);
     expect(labelConflicts[0]).toMatchObject({ kind: "label", value: "巡检包路径" });
-  });
-
-  it("finds host inputs and default-host requirements", () => {
-    expect(flowHostInputs(nodes)).toEqual({ inputNodes: [], needsDefaultHosts: false });
-    const inputNodes = JSON.parse(JSON.stringify(nodes)) as ParamFlowNode[];
-    inputNodes[1].hostSource = "input";
-    inputNodes[1].hostIDs = [];
-    expect(flowHostInputs(inputNodes).inputNodes.map((node) => node.id)).toEqual(["a"]);
-    const defaults = JSON.parse(JSON.stringify(nodes)) as ParamFlowNode[];
-    defaults[1].hostSource = "default";
-    defaults[1].hostIDs = [];
-    expect(flowHostInputs(defaults).needsDefaultHosts).toBe(true);
   });
 
   it("rejects sibling references", () => {

@@ -71,6 +71,7 @@ func createNamedTool(t *testing.T, e *testEnv, cookie *http.Cookie, name string,
 	w := e.do(t, http.MethodPost, "/api/v1/tools", map[string]any{
 		"name": name, "description": "demo tool", "type": "shell",
 		"interpreter": "/bin/bash", "content": "echo hello", "params": params, "timeout_sec": 30,
+		"host_param": map[string]any{"label": "执行主机", "default_host_ids": []string{"h1"}},
 	}, cookie)
 	if w.Code != http.StatusCreated {
 		t.Fatalf("create tool: status = %d, body = %s", w.Code, w.Body.String())

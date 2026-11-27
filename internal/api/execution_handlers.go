@@ -17,14 +17,13 @@ import (
 )
 
 type runInput struct {
-	Kind        string              `json:"kind"`
-	RefID       string              `json:"ref_id"`
-	Params      map[string]string   `json:"params"`
-	HostIDs     []string            `json:"host_ids"`
-	NodeHostIDs map[string][]string `json:"node_host_ids"`
-	Command     string              `json:"command"`
-	TimeoutSec  int                 `json:"timeout_sec"`
-	Sudo        bool                `json:"sudo"`
+	Kind       string            `json:"kind"`
+	RefID      string            `json:"ref_id"`
+	Params     map[string]string `json:"params"`
+	HostIDs    []string          `json:"host_ids"`
+	Command    string            `json:"command"`
+	TimeoutSec int               `json:"timeout_sec"`
+	Sudo       bool              `json:"sudo"`
 }
 
 type executionDTO struct {
@@ -69,21 +68,6 @@ type executionGraphEdge struct {
 	To        string `json:"to"`
 	Condition string `json:"condition"`
 	Value     string `json:"value,omitempty"`
-}
-
-// planRerunHosts recovers node host selections and default hosts from a stored plan.
-func planRerunHosts(planJSON string) (map[string][]string, []string) {
-	var plan exec.Plan
-	if err := json.Unmarshal([]byte(planJSON), &plan); err != nil || plan.Graph == nil {
-		return nil, nil
-	}
-	nodeHosts := map[string][]string{}
-	for _, node := range plan.Graph.Nodes {
-		if len(node.HostIDs) > 0 {
-			nodeHosts[node.ID] = append([]string{}, node.HostIDs...)
-		}
-	}
-	return nodeHosts, append([]string{}, plan.DefaultHostIDs...)
 }
 
 // executionGraphOf extracts the graph snapshot stored with a flow execution.
@@ -362,7 +346,7 @@ func createExecutionHandler(d Deps) gin.HandlerFunc {
 				fail(c, http.StatusConflict, "flow_disabled", "流程已停用，不能执行", nil)
 				return
 			}
-			res, err := d.Flows.Compile(ctx, in.RefID, in.Params, in.NodeHostIDs)
+			res, err := d.Flows.Compile(ctx, in.RefID, in.Params)
 			if err != nil {
 				writeFlowError(c, err)
 				return
@@ -484,12 +468,10 @@ func rerunExecutionHandler(d Deps) gin.HandlerFunc {
 			return
 		}
 		var (
-			name              string
-			plan              exec.Plan
-			plain             map[string]string
-			sensitive         map[string]string
-			rerunNodeHosts    map[string][]string
-			rerunDefaultHosts []string
+			name      string
+			plan      exec.Plan
+			plain     map[string]string
+			sensitive map[string]string
 		)
 		switch old.Kind {
 		case "tool":
@@ -550,8 +532,7 @@ func rerunExecutionHandler(d Deps) gin.HandlerFunc {
 					stored[k] = v
 				}
 			}
-			rerunNodeHosts, rerunDefaultHosts = planRerunHosts(old.PlanJSON)
-			res, err := d.Flows.Compile(ctx, detail.ID, stored, rerunNodeHosts)
+			res, err := d.Flows.Compile(ctx, detail.ID, stored)
 			if err != nil {
 				writeFlowError(c, err)
 				return
@@ -568,9 +549,6 @@ func rerunExecutionHandler(d Deps) gin.HandlerFunc {
 			if h.HostID != "" {
 				hostIDs = append(hostIDs, h.HostID)
 			}
-		}
-		if old.Kind == "flow" && len(rerunDefaultHosts) > 0 {
-			hostIDs = rerunDefaultHosts
 		}
 		u := currentUser(c)
 		ex, err := d.Engine.Submit(ctx, exec.SubmitRequest{

@@ -1,11 +1,11 @@
 import { Alert, Button, Card, Empty, Input, InputNumber, Select, Space, Table, Tag, Typography } from "antd";
-import type { FlowMapping, HostSource } from "../api/flows";
+import type { FlowMapping } from "../api/flows";
 import type { Host } from "../api/hosts";
 import type { ToolParam, ToolSummary } from "../api/tools";
 import {
-  ancestorIDs,
   compatibleUpstreamParams,
   inputConflicts,
+  toolFlowParams,
   topologicalOrder,
   type CompatibleParam,
   type ParamEdge,
@@ -18,11 +18,8 @@ interface Props {
   tools: ToolSummary[];
   hosts: Host[];
   onChange: (nodeID: string, mapping: Record<string, FlowMapping>) => void;
-  onHostChange: (nodeID: string, patch: { hostSource: HostSource; hostIDs: string[]; hostRefNodeID: string }) => void;
   onOpenNode: (nodeID: string) => void;
 }
-
-type ParamRow = { key: string; kind: "host" } | { key: string; kind: "param"; param: ToolParam };
 
 const sourceOptions = [
   { value: "default", label: "工具默认值" },
@@ -31,21 +28,27 @@ const sourceOptions = [
   { value: "node", label: "引用上游参数" },
 ];
 
-const hostSourceOptions = [
-  { value: "default", label: "默认执行主机" },
-  { value: "fixed", label: "固定主机" },
-  { value: "input", label: "执行时选择" },
-  { value: "node", label: "引用上游节点主机" },
-];
-
 function sourceOf(mapping: FlowMapping | undefined): string {
   return mapping?.source ?? "default";
+}
+
+function parseHostIDs(value: string | undefined): string[] {
+  try {
+    const parsed = JSON.parse(value || "[]");
+    return Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+function typeLabel(param: ToolParam): string {
+  return param.type === "host" ? "主机" : param.type;
 }
 
 function tagForParam(param: ToolParam) {
   return (
     <Space size={4} wrap>
-      <Tag>{param.type}</Tag>
+      <Tag>{typeLabel(param)}</Tag>
       {param.required && <Tag color="orange">必填</Tag>}
       {param.sensitive && <Tag color="red">敏感</Tag>}
     </Space>
@@ -53,13 +56,14 @@ function tagForParam(param: ToolParam) {
 }
 
 function defaultLiteral(param: ToolParam): string {
+  if (param.type === "host") return param.default || "[]";
   if (param.default) return param.default;
   if (param.type === "bool") return "false";
   if (param.type === "select") return param.options[0] ?? "";
   return "";
 }
 
-export default function FlowParamEditor({ nodes, edges, tools, hosts, onChange, onHostChange, onOpenNode }: Props) {
+export default function FlowParamEditor({ nodes, edges, tools, hosts, onChange, onOpenNode }: Props) {
   const toolsByID = new Map(tools.map((tool) => [tool.id, tool]));
   const conflicts = inputConflicts(nodes, toolsByID);
   const nodeByID = new Map(nodes.map((node) => [node.id, node]));
@@ -98,7 +102,7 @@ export default function FlowParamEditor({ nodes, edges, tools, hosts, onChange, 
       )}
       {toolNodes.map((node) => {
         const tool = toolsByID.get(node.toolID);
-        const params = tool?.params ?? [];
+        const params = toolFlowParams(tool);
         return (
           <Card
             key={node.id}
@@ -118,69 +122,31 @@ export default function FlowParamEditor({ nodes, edges, tools, hosts, onChange, 
             {!tool ? (
               <Alert type="warning" showIcon message="请先在“流程设计”中为节点选择工具" />
             ) : (
-              <Table<ParamRow>
-                rowKey="key"
+              <Table<ToolParam>
+                rowKey="name"
                 size="small"
                 pagination={false}
-                dataSource={[
-                  { key: "__host__", kind: "host" },
-                  ...params.map((param) => ({ key: param.name, kind: "param" as const, param })),
-                ]}
+                dataSource={params}
                 columns={[
                   {
                     title: "参数",
                     width: 190,
-                    render: (_, row) =>
-                      row.kind === "host" ? (
-                        <Typography.Text strong>执行主机</Typography.Text>
-                      ) : (
-                        <Space direction="vertical" size={0}>
-                          <Typography.Text strong>{row.param.name}</Typography.Text>
+                    render: (_, param) => (
+                      <Space direction="vertical" size={0}>
+                        <Typography.Text strong>{param.label || param.name}</Typography.Text>
+                        {param.label && param.label !== param.name && (
                           <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                            {row.param.label || row.param.description || "—"}
+                            {param.name}
                           </Typography.Text>
-                          {tagForParam(row.param)}
-                        </Space>
-                      ),
+                        )}
+                        {tagForParam(param)}
+                      </Space>
+                    ),
                   },
                   {
                     title: "来源",
                     width: 160,
-                    render: (_, row) => {
-                      if (row.kind === "host") {
-                        const upstream = nodes.filter(
-                          (candidate) => candidate.kind === "tool" && ancestorIDs(node.id, edges).has(candidate.id),
-                        );
-                        return (
-                          <Select
-                            size="small"
-                            value={node.hostSource}
-                            style={{ width: 150 }}
-                            onChange={(next: HostSource) => {
-                              if (next === "default") {
-                                onHostChange(node.id, { hostSource: "default", hostIDs: [], hostRefNodeID: "" });
-                                return;
-                              }
-                              if (next === "fixed") {
-                                onHostChange(node.id, { hostSource: "fixed", hostIDs: node.hostIDs, hostRefNodeID: "" });
-                                return;
-                              }
-                              if (next === "input") {
-                                onHostChange(node.id, { hostSource: "input", hostIDs: [], hostRefNodeID: "" });
-                                return;
-                              }
-                              const first = upstream[0];
-                              if (!first) return;
-                              onHostChange(node.id, { hostSource: "node", hostIDs: [], hostRefNodeID: first.id });
-                            }}
-                            options={hostSourceOptions.map((option) => ({
-                              ...option,
-                              disabled: option.value === "node" && upstream.length === 0,
-                            }))}
-                          />
-                        );
-                      }
-                      const param = row.param;
+                    render: (_, param) => {
                       const mapping = node.mapping[param.name];
                       const compatible = compatibleUpstreamParams(node.id, param, nodes, edges, toolsByID);
                       const source = sourceOf(mapping);
@@ -229,61 +195,15 @@ export default function FlowParamEditor({ nodes, edges, tools, hosts, onChange, 
                   },
                   {
                     title: "值 / 配置",
-                    render: (_, row) => {
-                      if (row.kind === "host") {
-                        const upstream = nodes.filter(
-                          (candidate) => candidate.kind === "tool" && ancestorIDs(node.id, edges).has(candidate.id),
-                        );
-                        if (node.hostSource === "fixed") {
-                          return (
-                            <Select
-                              mode="multiple"
-                              size="small"
-                              allowClear
-                              showSearch
-                              optionFilterProp="label"
-                              style={{ width: "100%", minWidth: 260 }}
-                              placeholder="选择执行主机"
-                              value={node.hostIDs}
-                              onChange={(hostIDs) =>
-                                onHostChange(node.id, { hostSource: "fixed", hostIDs, hostRefNodeID: "" })
-                              }
-                              options={hosts.map((host) => ({
-                                value: host.id,
-                                label: `${host.name} (${host.address})`,
-                              }))}
-                            />
-                          );
-                        }
-                        if (node.hostSource === "node") {
-                          return (
-                            <Select
-                              size="small"
-                              style={{ width: 240 }}
-                              placeholder="选择上游节点"
-                              value={node.hostRefNodeID || undefined}
-                              onChange={(hostRefNodeID) =>
-                                onHostChange(node.id, { hostSource: "node", hostIDs: [], hostRefNodeID })
-                              }
-                              options={upstream.map((candidate) => ({
-                                value: candidate.id,
-                                label: candidate.name || candidate.id,
-                              }))}
-                            />
-                          );
-                        }
-                        return null;
-                      }
-                      const param = row.param;
-                      return (
-                        <ParamValueEditor
-                          param={param}
-                          mapping={node.mapping[param.name]}
-                          compatible={compatibleUpstreamParams(node.id, param, nodes, edges, toolsByID)}
-                          onChange={(mapping) => updateMapping(node.id, param.name, mapping)}
-                        />
-                      );
-                    },
+                    render: (_, param) => (
+                      <ParamValueEditor
+                        param={param}
+                        mapping={node.mapping[param.name]}
+                        hosts={hosts}
+                        compatible={compatibleUpstreamParams(node.id, param, nodes, edges, toolsByID)}
+                        onChange={(mapping) => updateMapping(node.id, param.name, mapping)}
+                      />
+                    ),
                   },
                 ]}
               />
@@ -298,16 +218,25 @@ export default function FlowParamEditor({ nodes, edges, tools, hosts, onChange, 
 function ParamValueEditor({
   param,
   mapping,
+  hosts,
   compatible,
   onChange,
 }: {
   param: ToolParam;
   mapping: FlowMapping | undefined;
+  hosts: Host[];
   compatible: CompatibleParam[];
   onChange: (mapping?: FlowMapping) => void;
 }) {
   const source = sourceOf(mapping);
   if (source === "default") {
+    if (param.type === "host") {
+      const ids = parseHostIDs(param.default);
+      if (ids.length === 0) {
+        return <Typography.Text type="danger">必填参数未配置来源</Typography.Text>;
+      }
+      return <Typography.Text type="secondary">{hostNames(ids, hosts)}</Typography.Text>;
+    }
     if (param.required && !param.default) {
       return <Typography.Text type="danger">必填参数未配置来源</Typography.Text>;
     }
@@ -315,6 +244,22 @@ function ParamValueEditor({
   }
 
   if (mapping?.source === "literal") {
+    if (param.type === "host") {
+      return (
+        <Select
+          mode="multiple"
+          size="small"
+          allowClear
+          showSearch
+          optionFilterProp="label"
+          style={{ width: "100%", minWidth: 260 }}
+          placeholder="选择执行主机"
+          value={parseHostIDs(mapping.value)}
+          onChange={(ids) => onChange({ source: "literal", value: JSON.stringify(ids) })}
+          options={hosts.map((host) => ({ value: host.id, label: `${host.name} (${host.address})` }))}
+        />
+      );
+    }
     return (
       <Space direction="vertical" size={2} style={{ width: "100%" }}>
         {param.type === "bool" ? (
@@ -384,36 +329,39 @@ function ParamValueEditor({
     });
     const paramOptions = compatible
       .filter((item) => item.nodeID === mapping.ref_node_id)
-      .map((item) => ({ value: item.param.name, label: `${item.param.name}（${item.param.type}）` }));
+      .map((item) => ({ value: item.param.name, label: `${item.param.label || item.param.name}（${typeLabel(item.param)}）` }));
     return (
-      <Space direction="vertical" size={4} style={{ width: "100%" }}>
-        <Space wrap>
-          <Select
-            size="small"
-            value={mapping.ref_node_id || undefined}
-            style={{ width: 160 }}
-            placeholder="上游节点"
-            options={nodeOptions}
-            onChange={(nodeID) => {
-              const first = compatible.find((item) => item.nodeID === nodeID);
-              if (!first) return;
-              onChange({ source: "node", ref_node_id: nodeID, ref_param: first.param.name });
-            }}
-          />
-          <Select
-            size="small"
-            value={mapping.ref_param || undefined}
-            style={{ width: 190 }}
-            placeholder="上游参数"
-            options={paramOptions}
-            onChange={(paramName) =>
-              onChange({ source: "node", ref_node_id: mapping.ref_node_id, ref_param: paramName })
-            }
-          />
-        </Space>
+      <Space wrap>
+        <Select
+          size="small"
+          value={mapping.ref_node_id || undefined}
+          style={{ width: 160 }}
+          placeholder="上游节点"
+          options={nodeOptions}
+          onChange={(nodeID) => {
+            const first = compatible.find((item) => item.nodeID === nodeID);
+            if (!first) return;
+            onChange({ source: "node", ref_node_id: nodeID, ref_param: first.param.name });
+          }}
+        />
+        <Select
+          size="small"
+          value={mapping.ref_param || undefined}
+          style={{ width: 190 }}
+          placeholder="上游参数"
+          options={paramOptions}
+          onChange={(paramName) =>
+            onChange({ source: "node", ref_node_id: mapping.ref_node_id, ref_param: paramName })
+          }
+        />
       </Space>
     );
   }
 
   return null;
+}
+
+function hostNames(ids: string[], hosts: Host[]): string {
+  const names = new Map(hosts.map((host) => [host.id, host.name]));
+  return ids.map((id) => names.get(id) ?? id).join("、");
 }

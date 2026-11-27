@@ -34,23 +34,22 @@ func invalid(msg string) error { return &ValidationError{Message: msg} }
 
 // Schedule is the public view of a scheduled job.
 type Schedule struct {
-	ID                string              `json:"id"`
-	Name              string              `json:"name"`
-	TargetKind        string              `json:"target_kind"`
-	TargetRefID       string              `json:"target_ref_id"`
-	TargetName        string              `json:"target_name"`
-	Params            map[string]string   `json:"params"`
-	CronExpr          string              `json:"cron_expr"`
-	ConcurrencyPolicy string              `json:"concurrency_policy"`
-	HostIDs           []string            `json:"host_ids"`
-	NodeHostIDs       map[string][]string `json:"node_host_ids"`
-	NotifyChannelIDs  []string            `json:"notify_channel_ids"`
-	NotifyEvents      string              `json:"notify_events"`
-	Enabled           bool                `json:"enabled"`
-	LastRunAt         *int64              `json:"last_run_at"`
-	NextRunAt         *int64              `json:"next_run_at"`
-	CreatedAt         int64               `json:"created_at"`
-	UpdatedAt         int64               `json:"updated_at"`
+	ID                string            `json:"id"`
+	Name              string            `json:"name"`
+	TargetKind        string            `json:"target_kind"`
+	TargetRefID       string            `json:"target_ref_id"`
+	TargetName        string            `json:"target_name"`
+	Params            map[string]string `json:"params"`
+	CronExpr          string            `json:"cron_expr"`
+	ConcurrencyPolicy string            `json:"concurrency_policy"`
+	HostIDs           []string          `json:"host_ids"`
+	NotifyChannelIDs  []string          `json:"notify_channel_ids"`
+	NotifyEvents      string            `json:"notify_events"`
+	Enabled           bool              `json:"enabled"`
+	LastRunAt         *int64            `json:"last_run_at"`
+	NextRunAt         *int64            `json:"next_run_at"`
+	CreatedAt         int64             `json:"created_at"`
+	UpdatedAt         int64             `json:"updated_at"`
 }
 
 // Input carries create/update fields.
@@ -60,7 +59,6 @@ type Input struct {
 	TargetRefID       string
 	Params            map[string]string
 	HostIDs           []string
-	NodeHostIDs       map[string][]string
 	CronExpr          string
 	ConcurrencyPolicy string
 	NotifyChannelIDs  []string
@@ -85,7 +83,6 @@ type row struct {
 	ParamsJSON           string         `db:"params_json"`
 	SensitiveEnc         []byte         `db:"sensitive_params_enc"`
 	HostIDsJSON          string         `db:"host_ids_json"`
-	NodeHostIDsJSON      string         `db:"node_host_ids_json"`
 	CronExpr             string         `db:"cron_expr"`
 	ConcurrencyPolicy    string         `db:"concurrency_policy"`
 	NotifyChannelIDsJSON string         `db:"notify_channel_ids_json"`
@@ -103,14 +100,12 @@ func (r row) toSchedule() Schedule {
 	_ = json.Unmarshal([]byte(r.ParamsJSON), &params)
 	hostIDs := []string{}
 	_ = json.Unmarshal([]byte(r.HostIDsJSON), &hostIDs)
-	nodeHostIDs := map[string][]string{}
-	_ = json.Unmarshal([]byte(r.NodeHostIDsJSON), &nodeHostIDs)
 	channelIDs := []string{}
 	_ = json.Unmarshal([]byte(r.NotifyChannelIDsJSON), &channelIDs)
 	return Schedule{
 		ID: r.ID, Name: r.Name, TargetKind: r.TargetKind, TargetRefID: r.TargetRefID,
 		TargetName: r.TargetName.String, Params: params, CronExpr: r.CronExpr,
-		ConcurrencyPolicy: r.ConcurrencyPolicy, HostIDs: hostIDs, NodeHostIDs: nodeHostIDs,
+		ConcurrencyPolicy: r.ConcurrencyPolicy, HostIDs: hostIDs,
 		NotifyChannelIDs: channelIDs, NotifyEvents: r.NotifyEvents, Enabled: r.Enabled,
 		LastRunAt: r.LastRunAt, NextRunAt: r.NextRunAt, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
 	}
@@ -322,33 +317,6 @@ func dedupe(ids []string) []string {
 	return out
 }
 
-func flowHostRoot(node flow.Node, byID map[string]flow.Node) (string, error) {
-	seen := map[string]bool{}
-	for {
-		switch node.HostSource {
-		case flow.HostSourceDefault, "":
-			if node.HostSource == "" && len(node.HostIDs) > 0 {
-				return flow.HostSourceFixed, nil
-			}
-			return flow.HostSourceDefault, nil
-		case flow.HostSourceFixed, flow.HostSourceInput:
-			return node.HostSource, nil
-		case flow.HostSourceNode:
-			if seen[node.ID] {
-				return "", invalid("执行主机引用存在循环")
-			}
-			seen[node.ID] = true
-			target, ok := byID[node.HostRefNodeID]
-			if !ok {
-				return "", invalid(fmt.Sprintf("节点 %q 引用的执行主机节点不存在", node.Name))
-			}
-			node = target
-		default:
-			return "", invalid(fmt.Sprintf("节点 %q 的执行主机来源不合法", node.Name))
-		}
-	}
-}
-
 func (s *Service) validate(ctx context.Context, in *Input, existingSensitive map[string]string) (map[string]string, map[string]string, string, error) {
 	in.Name = strings.TrimSpace(in.Name)
 	if in.Name == "" || len(in.Name) > 64 {
@@ -383,52 +351,12 @@ func (s *Service) validate(ctx context.Context, in *Input, existingSensitive map
 		return nil, nil, "", invalid("通知时机必须是 failure 或 always")
 	}
 	in.HostIDs = dedupe(in.HostIDs)
-	providedNodeHosts := in.NodeHostIDs
-	in.NodeHostIDs = map[string][]string{}
 	needsHosts := in.TargetKind == "tool"
-	if in.TargetKind == "flow" {
-		detail, err := s.flows.Get(ctx, in.TargetRefID)
-		if err != nil {
-			return nil, nil, "", err
-		}
-		hostsByID := map[string]flow.Node{}
-		for _, node := range detail.Nodes {
-			if node.Type == flow.NodeTool {
-				hostsByID[node.ID] = node
-			}
-		}
-		inputNodes := map[string]bool{}
-		for _, node := range hostsByID {
-			root, err := flowHostRoot(node, hostsByID)
-			if err != nil {
-				return nil, nil, "", err
-			}
-			if root == flow.HostSourceDefault {
-				needsHosts = true
-			}
-			if node.HostSource == flow.HostSourceInput {
-				inputNodes[node.ID] = true
-			}
-		}
-		for nodeID := range inputNodes {
-			selected := dedupe(providedNodeHosts[nodeID])
-			if len(selected) == 0 {
-				name := hostsByID[nodeID].Name
-				return nil, nil, "", invalid(fmt.Sprintf("节点 %q 需要选择执行主机", name))
-			}
-			in.NodeHostIDs[nodeID] = selected
-		}
-	}
 	if needsHosts && len(in.HostIDs) == 0 {
 		return nil, nil, "", invalid("请选择至少一台默认主机")
 	}
-	hostChecks := append([]string{}, in.HostIDs...)
-	for _, ids := range in.NodeHostIDs {
-		hostChecks = append(hostChecks, ids...)
-	}
-	hostChecks = dedupe(hostChecks)
-	if len(hostChecks) > 0 {
-		q, args, err := sqlx.In(`SELECT count(*) FROM hosts WHERE id IN (?)`, hostChecks)
+	if len(in.HostIDs) > 0 {
+		q, args, err := sqlx.In(`SELECT count(*) FROM hosts WHERE id IN (?)`, in.HostIDs)
 		if err != nil {
 			return nil, nil, "", err
 		}
@@ -436,7 +364,7 @@ func (s *Service) validate(ctx context.Context, in *Input, existingSensitive map
 		if err := s.db.GetContext(ctx, &hosts, s.db.Rebind(q), args...); err != nil {
 			return nil, nil, "", err
 		}
-		if hosts != len(hostChecks) {
+		if hosts != len(in.HostIDs) {
 			return nil, nil, "", invalid("包含不存在的主机")
 		}
 	}
@@ -515,10 +443,10 @@ func (s *Service) Create(ctx context.Context, in Input, actorID string) (*Schedu
 	}
 	now := s.nowMs()
 	_, err = s.db.ExecContext(ctx, `INSERT INTO schedules
-		(id, name, target_kind, target_ref_id, params_json, sensitive_params_enc, host_ids_json, node_host_ids_json, cron_expr,
+		(id, name, target_kind, target_ref_id, params_json, sensitive_params_enc, host_ids_json, cron_expr,
 		 concurrency_policy, notify_channel_ids_json, notify_events, enabled, created_by, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		id, in.Name, in.TargetKind, in.TargetRefID, marshal(plain), sensitiveEnc, marshal(in.HostIDs), marshal(in.NodeHostIDs),
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		id, in.Name, in.TargetKind, in.TargetRefID, marshal(plain), sensitiveEnc, marshal(in.HostIDs),
 		in.CronExpr, in.ConcurrencyPolicy, marshal(in.NotifyChannelIDs), in.NotifyEvents, in.Enabled,
 		actorID, now, now)
 	if err != nil {
@@ -555,9 +483,9 @@ func (s *Service) Update(ctx context.Context, id string, in Input) (*Schedule, e
 		}
 	}
 	_, err = s.db.ExecContext(ctx, `UPDATE schedules SET name = ?, target_kind = ?, target_ref_id = ?,
-		params_json = ?, sensitive_params_enc = ?, host_ids_json = ?, node_host_ids_json = ?, cron_expr = ?, concurrency_policy = ?,
+		params_json = ?, sensitive_params_enc = ?, host_ids_json = ?, cron_expr = ?, concurrency_policy = ?,
 		notify_channel_ids_json = ?, notify_events = ?, enabled = ?, updated_at = ? WHERE id = ?`,
-		in.Name, in.TargetKind, in.TargetRefID, marshal(plain), sensitiveEnc, marshal(in.HostIDs), marshal(in.NodeHostIDs),
+		in.Name, in.TargetKind, in.TargetRefID, marshal(plain), sensitiveEnc, marshal(in.HostIDs),
 		in.CronExpr, in.ConcurrencyPolicy, marshal(in.NotifyChannelIDs), in.NotifyEvents, in.Enabled, s.nowMs(), id)
 	if err != nil {
 		if strings.Contains(err.Error(), "UNIQUE constraint failed") {
@@ -680,7 +608,7 @@ func (s *Service) submit(ctx context.Context, sch *Schedule, source, actorID str
 		}, plain, refs)
 		name = detail.Name
 	case "flow":
-		res, err := s.flows.Compile(ctx, sch.TargetRefID, values, sch.NodeHostIDs)
+		res, err := s.flows.Compile(ctx, sch.TargetRefID, values)
 		if err != nil {
 			return nil, err
 		}

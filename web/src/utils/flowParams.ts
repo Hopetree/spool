@@ -1,4 +1,4 @@
-import type { FlowMapping, HostSource } from "../api/flows";
+import type { FlowMapping } from "../api/flows";
 import type { ParamType, ToolParam, ToolSummary } from "../api/tools";
 
 export interface ParamFlowNode {
@@ -6,9 +6,6 @@ export interface ParamFlowNode {
   kind: "start" | "tool";
   name: string;
   toolID: string;
-  hostSource: HostSource;
-  hostIDs: string[];
-  hostRefNodeID: string;
   mapping: Record<string, FlowMapping>;
 }
 
@@ -93,8 +90,24 @@ export function ancestorIDs(nodeID: string, edges: ParamEdge[]): Set<string> {
   return visited;
 }
 
+export function toolFlowParams(tool: ToolSummary | undefined): ToolParam[] {
+  if (!tool) return [];
+  const host = tool.host_param;
+  const hostParam: ToolParam = {
+    name: "SPOOL_HOST",
+    label: host?.label || "执行主机",
+    type: "host",
+    required: true,
+    default: JSON.stringify(host?.default_host_ids ?? []),
+    options: [],
+    description: "",
+    sensitive: false,
+  };
+  return [hostParam, ...(tool.params ?? [])];
+}
+
 function toolParams(tool: ToolSummary | undefined): ToolParam[] {
-  return tool?.params ?? [];
+  return toolFlowParams(tool);
 }
 
 function optionsCover(current: string[], target: string[]): boolean {
@@ -358,29 +371,6 @@ export function inputConflicts(nodes: ParamFlowNode[], tools: Map<string, ToolSu
   return conflicts;
 }
 
-
-export function flowHostInputs(nodes: ParamFlowNode[]): { inputNodes: ParamFlowNode[]; needsDefaultHosts: boolean } {
-  const byID = new Map(nodes.map((node) => [node.id, node]));
-  const rootSource = (node: ParamFlowNode): HostSource => {
-    const seen = new Set<string>();
-    let current: ParamFlowNode | undefined = node;
-    while (current && current.hostSource === "node") {
-      if (seen.has(current.id)) return "default";
-      seen.add(current.id);
-      current = byID.get(current.hostRefNodeID);
-    }
-    if (!current) return "default";
-    return current.hostSource || (current.hostIDs.length > 0 ? "fixed" : "default");
-  };
-  const inputNodes: ParamFlowNode[] = [];
-  let needsDefaultHosts = false;
-  for (const node of nodes) {
-    if (node.kind !== "tool") continue;
-    if (node.hostSource === "input") inputNodes.push(node);
-    if (rootSource(node) === "default") needsDefaultHosts = true;
-  }
-  return { inputNodes, needsDefaultHosts };
-}
 
 export function compatibleUpstreamParams(
   nodeID: string,

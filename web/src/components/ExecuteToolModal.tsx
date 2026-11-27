@@ -86,7 +86,7 @@ export default function ExecuteToolModal({
     });
     form.resetFields();
     form.setFieldsValue({
-      host_ids: initialHostIDs ?? [],
+      host_ids: initialHostIDs ?? tool?.host_param?.default_host_ids ?? [],
       params: { ...defaults, ...(initialParams ?? {}) },
     });
   }, [open, tool, form, initialHostIDs, initialParams]);

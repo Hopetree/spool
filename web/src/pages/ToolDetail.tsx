@@ -17,6 +17,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams } from "react-router-dom";
 import dayjs from "dayjs";
 import { ApiError } from "../api/client";
+import { listHosts } from "../api/hosts";
 import {
   copyTool,
   deleteTool,
@@ -49,6 +50,11 @@ export default function ToolDetail() {
 
   const [execOpen, setExecOpen] = useState(false);
 
+  const { data: hostPage } = useQuery({
+    queryKey: ["hosts", "tool-detail"],
+    queryFn: () => listHosts({ page: 1, page_size: 100 }),
+  });
+  const hostName = (hostID: string) => hostPage?.items.find((h) => h.id === hostID)?.name ?? hostID;
   const { data: detail, isLoading } = useQuery({
     queryKey: ["tool", id],
     queryFn: () => getTool(id!),
@@ -269,6 +275,23 @@ export default function ToolDetail() {
           >
             {detail.version.prepare_command || "（无）"}
           </pre>
+          <Typography.Text type="secondary">执行主机参数</Typography.Text>
+          <Descriptions
+            size="small"
+            column={2}
+            style={{ marginTop: 8, marginBottom: 16 }}
+            items={[
+              { key: "label", label: "显示名称", children: detail.host_param?.label || "执行主机" },
+              {
+                key: "defaults",
+                label: "默认主机",
+                children:
+                  (detail.host_param?.default_host_ids ?? []).length > 0
+                    ? (detail.host_param?.default_host_ids ?? []).map(hostName).join("、")
+                    : "（无）",
+              },
+            ]}
+          />
           <Typography.Text type="secondary">参数</Typography.Text>
           <Table<ToolParam>
             rowKey="name"

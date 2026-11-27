@@ -3,6 +3,7 @@ package schedule
 import (
 	"context"
 	"errors"
+	"fmt"
 	"path/filepath"
 	"testing"
 	"time"
@@ -52,6 +53,7 @@ func newFixture(t *testing.T) *fixture {
 	}
 	detail, err := tools.Create(context.Background(), tool.Input{
 		Name: "t1", Type: "shell", Content: "echo hi", TimeoutSec: 30,
+		HostParam: tool.HostParam{DefaultHostIDs: []string{hostID}},
 		Params: []tool.Param{
 			{Name: "ENV", Type: "string", Default: "prod"},
 			{Name: "TOKEN", Type: "string", Sensitive: true},
@@ -157,50 +159,59 @@ func TestValidation(t *testing.T) {
 	}
 }
 
-func TestFlowScheduleHostsFollowNodeConfiguration(t *testing.T) {
+func TestFlowScheduleHostParams(t *testing.T) {
 	f := newFixture(t)
 	ctx := context.Background()
-	createFlow := func(name string, nodeHosts []string) string {
-		t.Helper()
-		d, err := f.flows.Create(ctx, flow.Input{
-			Name: name, MaxDurationSec: 600,
+	flowInput := func(mapping map[string]flow.Mapping) flow.Input {
+		return flow.Input{
+			Name: "host-params", MaxDurationSec: 600,
 			Nodes: []flow.NodeInput{
 				{ID: "start", Type: "start", Name: "开始"},
-				{ID: "n1", Type: "tool", Name: "run", ToolID: f.toolID, HostIDs: nodeHosts},
+				{ID: "n1", Type: "tool", Name: "run", ToolID: f.toolID, Mapping: mapping},
 			},
 			Edges: []flow.EdgeInput{{From: "start", To: "n1", Condition: flow.CondAlways}},
-		}, "admin")
-		if err != nil {
-			t.Fatal(err)
 		}
-		return d.ID
 	}
-
-	configured := createFlow("configured", []string{f.hostID})
+	// The tool host default satisfies the required host parameter.
+	configured, err := f.flows.Create(ctx, flowInput(nil), "admin")
+	if err != nil {
+		t.Fatal(err)
+	}
 	in := baseInput(f)
 	in.Name = "flow-configured"
 	in.TargetKind = "flow"
-	in.TargetRefID = configured
+	in.TargetRefID = configured.ID
 	in.Params = nil
 	in.HostIDs = nil
 	if _, err := f.svc.Create(ctx, in, "admin"); err != nil {
-		t.Fatalf("flow with all nodes configured should allow empty default hosts: %v", err)
+		t.Fatalf("flow with tool host default should allow empty default hosts: %v", err)
 	}
 
-	unconfigured := createFlow("unconfigured", nil)
+	// A runtime host parameter is stored as a normal schedule parameter.
+	runtimeInput := flowInput(map[string]flow.Mapping{
+		"SPOOL_HOST": {Source: "input", InputName: "flow_hosts", InputLabel: "执行主机"},
+	})
+	runtimeInput.Name = "host-runtime-params"
+	runtimeFlow, err := f.flows.Create(ctx, runtimeInput, "admin")
+	if err != nil {
+		t.Fatalf("create runtime host flow: %v", err)
+	}
 	in = baseInput(f)
-	in.Name = "flow-unconfigured"
+	in.Name = "flow-runtime-hosts"
 	in.TargetKind = "flow"
-	in.TargetRefID = unconfigured
-	in.Params = nil
+	in.TargetRefID = runtimeFlow.ID
 	in.HostIDs = nil
+	in.Params = nil
 	if _, err := f.svc.Create(ctx, in, "admin"); err == nil {
-		t.Fatal("flow with unconfigured node should require default hosts")
+		t.Fatal("expected missing host parameter to fail")
 	}
-
-	in.HostIDs = []string{f.hostID}
-	if _, err := f.svc.Create(ctx, in, "admin"); err != nil {
-		t.Fatalf("flow with default hosts should pass: %v", err)
+	in.Params = map[string]string{"flow_hosts": fmt.Sprintf(`["%s"]`, f.hostID)}
+	created, err := f.svc.Create(ctx, in, "admin")
+	if err != nil {
+		t.Fatalf("create flow schedule with host parameter: %v", err)
+	}
+	if created.Params["flow_hosts"] != in.Params["flow_hosts"] {
+		t.Fatalf("params = %+v", created.Params)
 	}
 
 	in = baseInput(f)
@@ -208,43 +219,6 @@ func TestFlowScheduleHostsFollowNodeConfiguration(t *testing.T) {
 	in.HostIDs = nil
 	if _, err := f.svc.Create(ctx, in, "admin"); err == nil {
 		t.Fatal("tool schedule without hosts should fail")
-	}
-}
-
-func TestFlowScheduleNodeHostSelection(t *testing.T) {
-	f := newFixture(t)
-	ctx := context.Background()
-	d, err := f.flows.Create(ctx, flow.Input{
-		Name: "host-input-flow", MaxDurationSec: 600,
-		Nodes: []flow.NodeInput{
-			{ID: "start", Type: "start", Name: "开始"},
-			{ID: "a", Type: "tool", Name: "A", ToolID: f.toolID, HostSource: flow.HostSourceInput},
-			{ID: "b", Type: "tool", Name: "B", ToolID: f.toolID, HostSource: flow.HostSourceNode, HostRefNodeID: "a"},
-		},
-		Edges: []flow.EdgeInput{
-			{From: "start", To: "a", Condition: flow.CondAlways},
-			{From: "a", To: "b", Condition: flow.CondAlways},
-		},
-	}, "admin")
-	if err != nil {
-		t.Fatal(err)
-	}
-	in := baseInput(f)
-	in.Name = "host-input-schedule"
-	in.TargetKind = "flow"
-	in.TargetRefID = d.ID
-	in.HostIDs = nil
-	in.NodeHostIDs = map[string][]string{"a": {f.hostID}}
-	created, err := f.svc.Create(ctx, in, "admin")
-	if err != nil {
-		t.Fatalf("create schedule: %v", err)
-	}
-	if len(created.NodeHostIDs["a"]) != 1 || created.NodeHostIDs["a"][0] != f.hostID {
-		t.Fatalf("node hosts = %+v", created.NodeHostIDs)
-	}
-	in.NodeHostIDs = nil
-	if _, err := f.svc.Create(ctx, in, "admin"); err == nil {
-		t.Fatal("expected missing node host selection to fail")
 	}
 }
 
@@ -256,7 +230,7 @@ func TestFlowScheduleIgnoresRemovedParameters(t *testing.T) {
 			Name: "flow-params", MaxDurationSec: 600,
 			Nodes: []flow.NodeInput{
 				{ID: "start", Type: "start", Name: "开始"},
-				{ID: "n1", Type: "tool", Name: "run", ToolID: f.toolID, HostIDs: []string{f.hostID}, Mapping: mapping},
+				{ID: "n1", Type: "tool", Name: "run", ToolID: f.toolID, Mapping: mapping},
 			},
 			Edges: []flow.EdgeInput{{From: "start", To: "n1", Condition: flow.CondAlways}},
 		}

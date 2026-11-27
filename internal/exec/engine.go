@@ -388,7 +388,6 @@ func normalizeGraphHosts(plan *Plan, fallback []string) ([]string, error) {
 
 // Submit persists an execution and starts it asynchronously.
 func (e *Engine) Submit(ctx context.Context, req SubmitRequest) (*Execution, error) {
-	defaultHosts := uniqueIDs(req.HostIDs)
 	perHostGraph := false
 	if req.Plan.Graph != nil {
 		anyExplicit := false
@@ -407,9 +406,6 @@ func (e *Engine) Submit(ctx context.Context, req SubmitRequest) (*Execution, err
 		return nil, err
 	}
 	req.Plan.PerHostGraph = perHostGraph
-	if req.Plan.Graph != nil {
-		req.Plan.DefaultHostIDs = defaultHosts
-	}
 	hosts := []hostRow{}
 	if len(requested) > 0 {
 		q, args, err := sqlx.In(`SELECT id, name, address, port, credential_id, fingerprint, fingerprint_type, enabled

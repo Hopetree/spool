@@ -27,27 +27,42 @@ type toolRow struct {
 	Type             string `db:"type"`
 	Interpreter      string `db:"interpreter"`
 	ParamsJSON       string `db:"params_json"`
+	HostLabel        string `db:"host_label"`
+	HostDefaultJSON  string `db:"host_default_ids_json"`
 	TimeoutSec       int    `db:"default_timeout_sec"`
 	Sudo             bool   `db:"sudo"`
 	ContentHash      string `db:"content_hash"`
 }
 
 type versionRow struct {
-	ID             string `db:"id"`
-	ToolID         string `db:"tool_id"`
-	VersionNo      int    `db:"version_no"`
-	Type           string `db:"type"`
-	Interpreter    string `db:"interpreter"`
-	Content        string `db:"content"`
-	ParamsJSON     string `db:"params_json"`
-	PrepareCommand string `db:"prepare_command"`
-	TimeoutSec     int    `db:"default_timeout_sec"`
-	Sudo           bool   `db:"sudo"`
-	ContentHash    string `db:"content_hash"`
-	ChangeNote     string `db:"change_note"`
-	CreatedBy      string `db:"created_by"`
-	CreatedByName  string `db:"created_by_name"`
-	CreatedAt      int64  `db:"created_at"`
+	ID              string `db:"id"`
+	ToolID          string `db:"tool_id"`
+	VersionNo       int    `db:"version_no"`
+	Type            string `db:"type"`
+	Interpreter     string `db:"interpreter"`
+	Content         string `db:"content"`
+	ParamsJSON      string `db:"params_json"`
+	HostLabel       string `db:"host_label"`
+	HostDefaultJSON string `db:"host_default_ids_json"`
+	PrepareCommand  string `db:"prepare_command"`
+	TimeoutSec      int    `db:"default_timeout_sec"`
+	Sudo            bool   `db:"sudo"`
+	ContentHash     string `db:"content_hash"`
+	ChangeNote      string `db:"change_note"`
+	CreatedBy       string `db:"created_by"`
+	CreatedByName   string `db:"created_by_name"`
+	CreatedAt       int64  `db:"created_at"`
+}
+
+func parseHostDefault(raw string) []string {
+	ids := []string{}
+	if raw != "" {
+		_ = json.Unmarshal([]byte(raw), &ids)
+	}
+	if ids == nil {
+		ids = []string{}
+	}
+	return ids
 }
 
 func (r versionRow) toVersion() (Version, error) {
@@ -65,6 +80,7 @@ func (r versionRow) toVersion() (Version, error) {
 		Interpreter:    r.Interpreter,
 		Content:        r.Content,
 		Params:         params,
+		HostParam:      HostParam{Label: r.HostLabel, DefaultHostIDs: parseHostDefault(r.HostDefaultJSON)},
 		PrepareCommand: r.PrepareCommand,
 		TimeoutSec:     r.TimeoutSec,
 		Sudo:           r.Sudo,
@@ -88,7 +104,8 @@ func NewService(db *sqlx.DB) *Service { return &Service{db: db, now: time.Now} }
 func (s *Service) nowMs() int64 { return s.now().UnixMilli() }
 
 const toolSelect = `SELECT t.id, t.name, t.category, t.description, t.enabled, t.current_version_id, t.created_at, t.updated_at,
-	v.version_no, v.type, v.interpreter, v.params_json, v.default_timeout_sec, v.sudo, v.content_hash
+	v.version_no, v.type, v.interpreter, v.params_json, v.host_label, v.host_default_ids_json,
+	v.default_timeout_sec, v.sudo, v.content_hash
 	FROM tools t JOIN tool_versions v ON v.id = t.current_version_id`
 
 func (r toolRow) toTool() Tool {
@@ -110,6 +127,7 @@ func (r toolRow) toTool() Tool {
 		ContentHash: r.ContentHash,
 		ParamCount:  len(params),
 		Params:      params,
+		HostParam:   HostParam{Label: r.HostLabel, DefaultHostIDs: parseHostDefault(r.HostDefaultJSON)},
 		CreatedAt:   r.CreatedAt,
 		UpdatedAt:   r.UpdatedAt,
 	}
@@ -204,12 +222,17 @@ func (s *Service) insertVersion(ctx context.Context, tx *sqlx.Tx, toolID string,
 	if err != nil {
 		return "", err
 	}
+	hostDefaultJSON, err := json.Marshal(in.HostParam.DefaultHostIDs)
+	if err != nil {
+		return "", fmt.Errorf("marshal host defaults: %w", err)
+	}
 	id := store.NewULID()
 	_, err = tx.ExecContext(ctx, `INSERT INTO tool_versions
-		(id, tool_id, version_no, type, interpreter, content, params_json, prepare_command,
+		(id, tool_id, version_no, type, interpreter, content, params_json, host_label, host_default_ids_json, prepare_command,
 		 default_timeout_sec, sudo, content_hash, change_note, created_by, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		id, toolID, versionNo, in.Type, in.Interpreter, in.Content, paramsJSON, in.PrepareCommand,
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		id, toolID, versionNo, in.Type, in.Interpreter, in.Content, paramsJSON,
+		in.HostParam.Label, string(hostDefaultJSON), in.PrepareCommand,
 		in.TimeoutSec, in.Sudo, HashContent(in.Content), in.ChangeNote, actorID, s.nowMs())
 	if err != nil {
 		return "", fmt.Errorf("insert version: %w", err)

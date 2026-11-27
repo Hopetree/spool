@@ -14,7 +14,6 @@ export interface Schedule {
   cron_expr: string;
   concurrency_policy: ConcurrencyPolicy;
   host_ids: string[];
-  node_host_ids: Record<string, string[]>;
   notify_channel_ids: string[];
   notify_events: NotifyEvents;
   enabled: boolean;
@@ -30,7 +29,6 @@ export interface ScheduleInput {
   target_ref_id: string;
   params: Record<string, string>;
   host_ids: string[];
-  node_host_ids: Record<string, string[]>;
   cron_expr: string;
   concurrency_policy: ConcurrencyPolicy;
   notify_channel_ids: string[];

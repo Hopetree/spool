@@ -114,6 +114,18 @@ func TestExecuteFlowAndRerun(t *testing.T) {
 	cred := createTestCredential(t, e, admin)
 	host := createTestHost(t, e, admin, cred["id"].(string))
 	flow := createTestFlow(t, e, admin, "deploy")
+	hostID := host["id"].(string)
+	for _, raw := range flow["nodes"].([]any) {
+		node := raw.(map[string]any)
+		toolID, _ := node["tool_id"].(string)
+		if toolID == "" {
+			continue
+		}
+		if _, err := e.store.DB.Exec(`UPDATE tool_versions SET host_default_ids_json = ? WHERE tool_id = ?`,
+			`["`+hostID+`"]`, toolID); err != nil {
+			t.Fatal(err)
+		}
+	}
 	operator := ensureOperator(t, e)
 
 	w := e.do(t, http.MethodPost, "/api/v1/executions", map[string]any{
