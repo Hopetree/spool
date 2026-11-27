@@ -3,10 +3,59 @@ import { App as AntApp, Button, Checkbox, Input, Space } from "antd";
 import { CopyOutlined, DownloadOutlined } from "@ant-design/icons";
 import { listEvents, logDownloadUrl, type ExecutionEvent } from "../api/executions";
 
-interface Line {
-  seq: number;
+interface LogLine {
+  key: string;
   stream: "stdout" | "stderr";
-  data: string;
+  text: string;
+}
+
+interface ViewerState {
+  lines: LogLine[];
+  pending: string;
+  pendingStream: "stdout" | "stderr";
+  pendingSeq: number;
+}
+
+const maxLogLines = 20000;
+
+function emptyViewer(): ViewerState {
+  return { lines: [], pending: "", pendingStream: "stdout", pendingSeq: 0 };
+}
+
+/** Split a streaming chunk into real output lines while keeping a partial tail. */
+function appendLog(
+  state: ViewerState,
+  data: string,
+  stream: "stdout" | "stderr",
+  seq: number,
+): ViewerState {
+  if (!data) return state;
+  const continuing = state.pending.length > 0;
+  const lineStream = continuing ? state.pendingStream : stream;
+  const parts = (state.pending + data).split("\n");
+  const pending = parts.pop() ?? "";
+  const completed: LogLine[] = parts.map((text, index) => ({
+    key: `${seq}-${index}`,
+    stream: lineStream,
+    text,
+  }));
+  const lines = [...state.lines, ...completed];
+  return {
+    lines: lines.length > maxLogLines ? lines.slice(lines.length - maxLogLines) : lines,
+    pending,
+    pendingStream: pending ? lineStream : stream,
+    pendingSeq: pending ? (continuing ? state.pendingSeq : seq) : seq,
+  };
+}
+
+function buildViewer(events: ExecutionEvent[]): ViewerState {
+  let state = emptyViewer();
+  for (const ev of events) {
+    if (ev.type === "log" && ev.data) {
+      state = appendLog(state, ev.data, ev.stream ?? "stdout", ev.seq);
+    }
+  }
+  return state;
 }
 
 function highlight(text: string, query: string) {
@@ -34,7 +83,7 @@ export default function LogViewer({
   stepRunID?: string;
 }) {
   const { message } = AntApp.useApp();
-  const [lines, setLines] = useState<Line[]>([]);
+  const [viewer, setViewer] = useState<ViewerState>(emptyViewer);
   const [follow, setFollow] = useState(true);
   const [wrap, setWrap] = useState(true);
   const [lineNumbers, setLineNumbers] = useState(true);
@@ -44,25 +93,19 @@ export default function LogViewer({
   useEffect(() => {
     let cancelled = false;
     let source: EventSource | undefined;
-    setLines([]);
+    setViewer(emptyViewer());
 
     const append = (ev: ExecutionEvent) => {
       if (cancelled || ev.type !== "log" || !ev.data) return;
-      setLines((prev) => {
-        if (prev.length >= 20000) return prev;
-        return [...prev, { seq: ev.seq, stream: ev.stream ?? "stdout", data: ev.data ?? "" }];
-      });
+      const data = ev.data;
+      setViewer((prev) => appendLog(prev, data, ev.stream ?? "stdout", ev.seq));
     };
 
     const load = async () => {
       try {
         const res = await listEvents(executionId, 0, 20000, hostRunID, stepRunID);
         if (cancelled) return;
-        setLines(
-          res.items
-            .filter((ev) => ev.type === "log" && ev.data)
-            .map((ev) => ({ seq: ev.seq, stream: ev.stream ?? "stdout", data: ev.data ?? "" })),
-        );
+        setViewer(buildViewer(res.items));
         if (!active) return;
         const last = res.items.length ? res.items[res.items.length - 1].seq : 0;
         const suffix = hostRunID ? `&host_run=${hostRunID}` : "";
@@ -85,15 +128,23 @@ export default function LogViewer({
     if (follow && boxRef.current) {
       boxRef.current.scrollTop = boxRef.current.scrollHeight;
     }
-  }, [lines, follow]);
+  }, [viewer, follow]);
 
-  const visible = lines
+  const displayLines: LogLine[] = viewer.pending
+    ? [
+        ...viewer.lines,
+        { key: `pending-${viewer.pendingSeq}`, stream: viewer.pendingStream, text: viewer.pending },
+      ]
+    : viewer.lines;
+  const visible = displayLines
     .map((line, idx) => ({ ...line, no: idx + 1 }))
-    .filter((line) => !query || line.data.toLowerCase().includes(query.toLowerCase()));
+    .filter((line) => !query || line.text.toLowerCase().includes(query.toLowerCase()));
 
   const copyAll = async () => {
     try {
-      await navigator.clipboard.writeText(lines.map((l) => l.data).join(""));
+      await navigator.clipboard.writeText(
+        displayLines.length ? `${displayLines.map((l) => l.text).join("\n")}\n` : "",
+      );
       message.success("已复制全部日志");
     } catch {
       message.error("复制失败");
@@ -132,7 +183,7 @@ export default function LogViewer({
           自动滚动
         </Checkbox>
         <span style={{ color: "#888" }}>
-          {query ? `${visible.length} / ${lines.length} 段` : `${lines.length} 段输出`}
+          {query ? `${visible.length} / ${displayLines.length} 行` : `${displayLines.length} 行输出`}
         </span>
       </Space>
       <div
@@ -149,14 +200,14 @@ export default function LogViewer({
           borderRadius: 6,
         }}
       >
-        {lines.length === 0 ? (
+        {displayLines.length === 0 ? (
           <span style={{ color: "#6b7a90" }}>暂无输出</span>
         ) : visible.length === 0 ? (
           <span style={{ color: "#6b7a90" }}>没有匹配的日志</span>
         ) : (
           visible.map((line) => (
             <div
-              key={line.seq}
+              key={line.key}
               style={{
                 display: "flex",
                 gap: 10,
@@ -170,7 +221,7 @@ export default function LogViewer({
                   {line.no}
                 </span>
               )}
-              <span style={{ minWidth: 0 }}>{highlight(line.data, query)}</span>
+              <span style={{ minWidth: 0 }}>{highlight(line.text, query)}</span>
             </div>
           ))
         )}
