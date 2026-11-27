@@ -6,7 +6,7 @@ import {
   ThunderboltOutlined,
   ToolOutlined,
 } from "@ant-design/icons";
-import { Button, Card, Col, Row, Space, Statistic, Typography } from "antd";
+import { Button, Card, Col, Row, Space, Statistic, Tooltip, Typography } from "antd";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import dayjs from "dayjs";
@@ -177,34 +177,54 @@ export default function Home() {
             <div style={{ display: "flex", alignItems: "flex-end", gap: 12, height: 132 }}>
               {trend.buckets.map((b) => {
                 const total = b.success + b.failed + b.other;
+                const dayRate = total ? Math.round((b.success / total) * 1000) / 10 : null;
                 return (
-                  <div
+                  <Tooltip
                     key={b.key}
-                    title={`${b.label}：成功 ${b.success} / 失败 ${b.failed} / 其他 ${b.other}`}
-                    style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "flex-end", gap: 6 }}
+                    title={
+                      <div style={{ minWidth: 150 }}>
+                        <div style={{ fontWeight: 600, marginBottom: 4 }}>{b.key}</div>
+                        <div>总执行：{total} 次</div>
+                        <div>
+                          成功：{b.success} · 失败：{b.failed} · 其他：{b.other}
+                        </div>
+                        <div>成功率：{dayRate === null ? "—" : `${dayRate}%`}</div>
+                      </div>
+                    }
                   >
                     <div
                       style={{
-                        height: Math.max(4, Math.round((total / barMax) * 104)),
+                        flex: 1,
+                        alignSelf: "stretch",
                         display: "flex",
-                        flexDirection: "column-reverse",
-                        borderRadius: 4,
-                        overflow: "hidden",
-                        background: "#f0f0f0",
+                        flexDirection: "column",
+                        justifyContent: "flex-end",
+                        gap: 6,
                       }}
                     >
-                      {b.success > 0 && (
-                        <div style={{ height: `${(b.success / Math.max(total, 1)) * 100}%`, background: "#52c41a" }} />
-                      )}
-                      {b.failed > 0 && (
-                        <div style={{ height: `${(b.failed / Math.max(total, 1)) * 100}%`, background: "#ff4d4f" }} />
-                      )}
-                      {b.other > 0 && (
-                        <div style={{ height: `${(b.other / Math.max(total, 1)) * 100}%`, background: "#bfbfbf" }} />
-                      )}
+                      <div
+                        style={{
+                          height: Math.max(4, Math.round((total / barMax) * 104)),
+                          display: "flex",
+                          flexDirection: "column-reverse",
+                          borderRadius: 4,
+                          overflow: "hidden",
+                          background: "#f0f0f0",
+                        }}
+                      >
+                        {b.success > 0 && (
+                          <div style={{ height: `${(b.success / Math.max(total, 1)) * 100}%`, background: "#52c41a" }} />
+                        )}
+                        {b.failed > 0 && (
+                          <div style={{ height: `${(b.failed / Math.max(total, 1)) * 100}%`, background: "#ff4d4f" }} />
+                        )}
+                        {b.other > 0 && (
+                          <div style={{ height: `${(b.other / Math.max(total, 1)) * 100}%`, background: "#bfbfbf" }} />
+                        )}
+                      </div>
+                      <div style={{ textAlign: "center", fontSize: 11, color: "#8c8c8c" }}>{b.label}</div>
                     </div>
-                    <div style={{ textAlign: "center", fontSize: 11, color: "#8c8c8c" }}>{b.label}</div>
-                  </div>
+                  </Tooltip>
                 );
               })}
             </div>
@@ -258,17 +278,8 @@ export default function Home() {
         </Space>
       </Card>
 
-      <Card
-        style={{ marginTop: 16 }}
-        title="最近执行"
-        extra={
-          <Space size={12}>
-            <Typography.Link onClick={() => navigate("/tools/executions")}>工具历史</Typography.Link>
-            <Typography.Link onClick={() => navigate("/flows/executions")}>流程历史</Typography.Link>
-          </Space>
-        }
-      >
-        <ExecutionTable pageSize={8} showKind />
+      <Card style={{ marginTop: 16 }} title="执行历史">
+        <ExecutionTable pageSize={10} showKind showFilters showKindFilter serverPagination />
       </Card>
     </div>
   );

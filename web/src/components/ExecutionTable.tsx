@@ -15,6 +15,8 @@ interface Props {
   showSchedule?: boolean;
   showFilters?: boolean;
   showKind?: boolean;
+  showKindFilter?: boolean;
+  serverPagination?: boolean;
   pageSize?: number;
 }
 
@@ -26,6 +28,12 @@ const statusOptions = [
   { value: "failed", label: "失败" },
   { value: "cancelled", label: "已取消" },
   { value: "interrupted", label: "已中断" },
+];
+
+const kindOptions = [
+  { value: "tool", label: "工具" },
+  { value: "flow", label: "流程" },
+  { value: "adhoc", label: "临时命令" },
 ];
 
 const kindLabels: Record<string, string> = { tool: "工具", flow: "流程", adhoc: "临时命令" };
@@ -45,12 +53,17 @@ export default function ExecutionTable({
   showSchedule,
   showFilters,
   showKind,
+  showKindFilter,
+  serverPagination,
   pageSize = 20,
 }: Props) {
   const navigate = useNavigate();
   const [status, setStatus] = useState<string>();
+  const [kindFilter, setKindFilter] = useState<string>();
   const [keyword, setKeyword] = useState("");
   const [range, setRange] = useState("all");
+  const [page, setPage] = useState(1);
+  const effectiveKind = kind ?? kindFilter;
 
   const { data: schedulePage } = useQuery({
     queryKey: ["schedules", "names"],
@@ -62,25 +75,26 @@ export default function ExecutionTable({
   const { data, isLoading } = useQuery({
     queryKey: [
       "executions",
-      kind ?? "",
+      effectiveKind ?? "",
       refID ?? "",
       scheduleID ?? "",
       scheduledOnly ? "scheduled" : "",
       status,
       keyword,
       range,
+      serverPagination ? page : 1,
     ],
     queryFn: () =>
       listExecutions({
-        kind,
+        kind: effectiveKind,
         ref_id: refID,
         schedule_id: scheduleID,
         scheduled: scheduledOnly,
         status,
         keyword,
         from: range === "all" ? undefined : dayjs().subtract(Number(range), "hour").valueOf(),
-        page: 1,
-        page_size: 100,
+        page: serverPagination ? page : 1,
+        page_size: serverPagination ? pageSize : 100,
       }),
     refetchInterval: (query) => {
       const items = query.state.data?.items ?? [];
@@ -88,30 +102,63 @@ export default function ExecutionTable({
     },
   });
 
+  const resetPage = () => setPage(1);
+
   return (
     <div>
-      {showFilters && (
+      {(showFilters || showKindFilter) && (
         <Space style={{ marginBottom: 16 }} wrap>
-          <Select
-            allowClear
-            placeholder="状态"
-            style={{ width: 130 }}
-            value={status}
-            onChange={setStatus}
-            options={statusOptions}
-          />
-          <Select
-            style={{ width: 130 }}
-            value={range}
-            onChange={setRange}
-            options={[
-              { value: "all", label: "全部时间" },
-              { value: "24", label: "近 24 小时" },
-              { value: "168", label: "近 7 天" },
-              { value: "720", label: "近 30 天" },
-            ]}
-          />
-          <Input.Search allowClear placeholder="名称关键字" style={{ width: 240 }} onSearch={setKeyword} />
+          {showKindFilter && (
+            <Select
+              allowClear
+              placeholder="全部类型"
+              style={{ width: 130 }}
+              value={kindFilter}
+              onChange={(v) => {
+                setKindFilter(v);
+                resetPage();
+              }}
+              options={kindOptions}
+            />
+          )}
+          {showFilters && (
+            <>
+              <Select
+                allowClear
+                placeholder="状态"
+                style={{ width: 130 }}
+                value={status}
+                onChange={(v) => {
+                  setStatus(v);
+                  resetPage();
+                }}
+                options={statusOptions}
+              />
+              <Select
+                style={{ width: 130 }}
+                value={range}
+                onChange={(v) => {
+                  setRange(v);
+                  resetPage();
+                }}
+                options={[
+                  { value: "all", label: "全部时间" },
+                  { value: "24", label: "近 24 小时" },
+                  { value: "168", label: "近 7 天" },
+                  { value: "720", label: "近 30 天" },
+                ]}
+              />
+              <Input.Search
+                allowClear
+                placeholder="名称关键字"
+                style={{ width: 240 }}
+                onSearch={(v) => {
+                  setKeyword(v);
+                  resetPage();
+                }}
+              />
+            </>
+          )}
         </Space>
       )}
       <Table<Execution>
@@ -119,7 +166,18 @@ export default function ExecutionTable({
         size="small"
         loading={isLoading}
         dataSource={data?.items ?? []}
-        pagination={{ pageSize, showSizeChanger: false }}
+        pagination={
+          serverPagination
+            ? {
+                current: page,
+                pageSize,
+                total: data?.total ?? 0,
+                showSizeChanger: false,
+                showTotal: (total) => `共 ${total} 条`,
+                onChange: setPage,
+              }
+            : { pageSize, showSizeChanger: false }
+        }
         onRow={(r) => ({ onClick: () => navigate(`/executions/${r.id}`), style: { cursor: "pointer" } })}
         columns={[
           {
