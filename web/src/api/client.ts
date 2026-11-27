@@ -22,7 +22,8 @@ export async function parseApiError(res: Response): Promise<ApiError> {
       body.details,
     );
   } catch {
-    return new ApiError(res.status, `http_${res.status}`, `请求失败 (${res.status})`);
+    const fallback = res.status === 413 ? "文件过大，超出服务器限制" : `请求失败 (${res.status})`;
+    return new ApiError(res.status, `http_${res.status}`, fallback);
   }
 }
 

@@ -188,7 +188,7 @@ func (s *Service) dial(ctx context.Context, hostID string) (*sshx.Client, hostRe
 	}
 	authType, username, secret, passphrase, err := s.creds.Open(ctx, h.CredentialID)
 	if err != nil {
-		return nil, h, err
+		return nil, h, errors.New("读取登录凭据失败，请检查凭据配置")
 	}
 	client, err := sshx.Dial(ctx, sshx.Target{
 		Address: h.Address, Port: h.Port, Username: username, AuthType: authType,
@@ -196,7 +196,14 @@ func (s *Service) dial(ctx context.Context, hostID string) (*sshx.Client, hostRe
 		ExpectedFingerprint: h.Fingerprint, Policy: s.policy,
 	})
 	if err != nil {
-		return nil, h, err
+		var keyErr *sshx.HostKeyError
+		if errors.As(err, &keyErr) {
+			if keyErr.Changed {
+				return nil, h, errors.New("主机指纹已变化，请先在主机详情中确认并更新指纹")
+			}
+			return nil, h, errors.New("主机指纹未确认，请先在主机详情中执行连通性测试")
+		}
+		return nil, h, errors.New("无法连接主机，请检查地址、端口、凭据和网络")
 	}
 	return client, h, nil
 }
@@ -455,7 +462,7 @@ func (s *Service) uploadOne(ctx context.Context, transferID string, req UploadRe
 	sftpClient, err := client.SFTP()
 	if err != nil {
 		now := s.nowMs()
-		s.setTarget(target.ID, "failed", 0, "SFTP 不可用："+err.Error(), nil, &now)
+		s.setTarget(target.ID, "failed", 0, "SFTP 不可用，请检查主机的 SSH/SFTP 配置", nil, &now)
 		return
 	}
 	defer sftpClient.Close()
@@ -464,7 +471,7 @@ func (s *Service) uploadOne(ctx context.Context, transferID string, req UploadRe
 	if req.CreateParents {
 		if err := sftpClient.MkdirAll(req.RemoteDir); err != nil {
 			now := s.nowMs()
-			s.setTarget(target.ID, "failed", 0, "创建目录失败："+err.Error(), nil, &now)
+			s.setTarget(target.ID, "failed", 0, "创建远端目录失败，请检查目录权限", nil, &now)
 			return
 		}
 	}
@@ -478,14 +485,14 @@ func (s *Service) uploadOne(ctx context.Context, transferID string, req UploadRe
 	src, err := os.Open(req.FilePath)
 	if err != nil {
 		now := s.nowMs()
-		s.setTarget(target.ID, "failed", 0, err.Error(), nil, &now)
+		s.setTarget(target.ID, "failed", 0, "读取本地临时文件失败，请重新上传", nil, &now)
 		return
 	}
 	defer src.Close()
 	dst, err := sftpClient.OpenFile(remotePath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC)
 	if err != nil {
 		now := s.nowMs()
-		s.setTarget(target.ID, "failed", 0, "打开远端文件失败："+err.Error(), nil, &now)
+		s.setTarget(target.ID, "failed", 0, "打开远端文件失败，请检查目录和文件权限", nil, &now)
 		return
 	}
 
@@ -526,7 +533,7 @@ func (s *Service) uploadOne(ctx context.Context, transferID string, req UploadRe
 	now := s.nowMs()
 	if copyErr != nil {
 		status := "failed"
-		msg := copyErr.Error()
+		msg := "传输失败，请检查网络连接后重试"
 		if ctx.Err() != nil {
 			status = "cancelled"
 			msg = "已取消"
@@ -564,18 +571,18 @@ func (s *Service) OpenDownload(ctx context.Context, hostID, remotePath, actorID 
 	sftpClient, err := client.SFTP()
 	if err != nil {
 		client.Close()
-		return nil, fmt.Errorf("SFTP 不可用：%w", err)
+		return nil, errors.New("SFTP 不可用，请检查主机的 SSH/SFTP 配置")
 	}
 	info, err := sftpClient.Stat(remotePath)
 	if err != nil {
 		sftpClient.Close()
 		client.Close()
-		return nil, fmt.Errorf("读取远端文件失败：%w", err)
+		return nil, invalid("远端文件不存在或无权访问")
 	}
 	if info.IsDir() {
 		sftpClient.Close()
 		client.Close()
-		return nil, invalid("远端路径是目录")
+		return nil, invalid("远端路径是目录，无法下载")
 	}
 	if info.Size() > s.cfg.MaxDownloadBytes {
 		sftpClient.Close()
@@ -586,7 +593,7 @@ func (s *Service) OpenDownload(ctx context.Context, hostID, remotePath, actorID 
 	if err != nil {
 		sftpClient.Close()
 		client.Close()
-		return nil, fmt.Errorf("打开远端文件失败：%w", err)
+		return nil, invalid("无法打开远端文件，请检查路径和权限")
 	}
 
 	name := path.Base(remotePath)

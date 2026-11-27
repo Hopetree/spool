@@ -22,7 +22,7 @@ import PageHeader from "../components/PageHeader";
 import { listHosts } from "../api/hosts";
 import {
   cancelTransfer,
-  downloadUrl,
+  downloadTransfer,
   getTransfer,
   listTransfers,
   uploadTransfer,
@@ -53,6 +53,15 @@ const statusColor: Record<string, string> = {
   partial: "orange",
   failed: "red",
   cancelled: "default",
+};
+
+const statusLabel: Record<string, string> = {
+  queued: "排队中",
+  running: "进行中",
+  success: "成功",
+  partial: "部分成功",
+  failed: "失败",
+  cancelled: "已取消",
 };
 
 export default function Files() {
@@ -99,7 +108,22 @@ export default function Files() {
       form.resetFields();
       void qc.invalidateQueries({ queryKey: ["transfers"] });
     },
-    onError: (err) => message.error(err instanceof ApiError ? err.message : "提交失败"),
+    onError: (err) => message.error(err instanceof ApiError ? err.message : "上传失败，请稍后重试"),
+  });
+
+  const download = useMutation({
+    mutationFn: () => downloadTransfer(downloadHost!, downloadPath.trim()),
+    onSuccess: ({ blob, fileName }) => {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    },
+    onError: (err) => message.error(err instanceof ApiError ? err.message : "下载失败，请稍后重试"),
   });
 
   const cancel = useMutation({
@@ -115,6 +139,10 @@ export default function Files() {
   const doUpload = (values: UploadForm) => {
     if (!file) {
       message.error("请选择文件");
+      return;
+    }
+    if (file.size === 0) {
+      message.error("不能上传空文件");
       return;
     }
     const fd = new FormData();
@@ -140,6 +168,11 @@ export default function Files() {
           <Upload.Dragger
             showUploadList={false}
             beforeUpload={(f) => {
+              if (f.size === 0) {
+                message.error("不能上传空文件");
+                setFile(null);
+                return Upload.LIST_IGNORE;
+              }
               setFile(f);
               return false;
             }}
@@ -159,13 +192,41 @@ export default function Files() {
           />
         </Form.Item>
         <Space wrap align="start">
-          <Form.Item name="remote_dir" label="远端目录" rules={[{ required: true, message: "请输入远端目录" }]} style={{ width: 260 }}>
+          <Form.Item
+            name="remote_dir"
+            label="远端目录"
+            rules={[
+              { required: true, message: "请输入远端目录" },
+              { pattern: /^\//, message: "远端目录必须是绝对路径，如 /tmp" },
+            ]}
+            style={{ width: 260 }}
+          >
             <Input placeholder="/tmp" />
           </Form.Item>
-          <Form.Item name="remote_name" label="远端文件名" style={{ width: 200 }}>
+          <Form.Item
+            name="remote_name"
+            label="远端文件名"
+            style={{ width: 200 }}
+            rules={[
+              {
+                validator: (_, value: string | undefined) =>
+                  !value || (!value.includes("/") && !value.includes("\\"))
+                    ? Promise.resolve()
+                    : Promise.reject(new Error("文件名不能包含斜杠")),
+              },
+            ]}
+          >
             <Input placeholder="默认使用原文件名" />
           </Form.Item>
-          <Form.Item name="mode" label="权限" style={{ width: 120 }}>
+          <Form.Item
+            name="mode"
+            label="权限"
+            style={{ width: 120 }}
+            rules={[
+              { required: true, message: "请输入权限" },
+              { pattern: /^[0-7]{3,4}$/, message: "请输入 3-4 位八进制，如 0644" },
+            ]}
+          >
             <Input placeholder="0644" />
           </Form.Item>
           <Form.Item name="overwrite" label="覆盖策略" style={{ width: 160 }}>
@@ -190,7 +251,9 @@ export default function Files() {
           title={`传输：${active.transfer.file_name}`}
           extra={
             <Space>
-              <Tag color={statusColor[active.transfer.status] ?? "default"}>{active.transfer.status}</Tag>
+              <Tag color={statusColor[active.transfer.status] ?? "default"}>
+                {statusLabel[active.transfer.status] ?? active.transfer.status}
+              </Tag>
               {(active.transfer.status === "queued" || active.transfer.status === "running") && (
                 <Button size="small" danger loading={cancel.isPending} onClick={() => cancel.mutate(active.transfer.id)}>
                   取消
@@ -210,7 +273,9 @@ export default function Files() {
               {
                 title: "状态",
                 dataIndex: "status",
-                render: (v: string) => <Tag color={statusColor[v] ?? "default"}>{v}</Tag>,
+                render: (v: string) => (
+                  <Tag color={statusColor[v] ?? "default"}>{statusLabel[v] ?? v}</Tag>
+                ),
               },
               {
                 title: "进度",
@@ -253,12 +318,14 @@ export default function Files() {
           placeholder="远端绝对路径，如 /var/log/nginx/access.log"
           style={{ width: 380 }}
           value={downloadPath}
+          status={downloadPath && !downloadPath.trim().startsWith("/") ? "error" : undefined}
           onChange={(e) => setDownloadPath(e.target.value)}
         />
         <Button
           type="primary"
-          disabled={!downloadHost || !downloadPath.startsWith("/")}
-          onClick={() => downloadHost && window.open(downloadUrl(downloadHost, downloadPath), "_blank")}
+          loading={download.isPending}
+          disabled={!downloadHost || !downloadPath.trim().startsWith("/")}
+          onClick={() => download.mutate()}
         >
           下载
         </Button>
@@ -291,7 +358,7 @@ export default function Files() {
           title: "状态",
           dataIndex: "status",
           width: 110,
-          render: (v: string) => <Tag color={statusColor[v] ?? "default"}>{v}</Tag>,
+          render: (v: string) => <Tag color={statusColor[v] ?? "default"}>{statusLabel[v] ?? v}</Tag>,
         },
         { title: "大小", dataIndex: "size_bytes", width: 100, render: (v: number) => bytes(v) },
         { title: "主机数", dataIndex: "target_total", width: 90 },

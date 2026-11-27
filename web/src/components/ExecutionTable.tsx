@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Input, Select, Space, Table } from "antd";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { Link, useNavigate } from "react-router-dom";
 import dayjs from "dayjs";
 import { listExecutions, type Execution } from "../api/executions";
@@ -96,6 +96,7 @@ export default function ExecutionTable({
         page: serverPagination ? page : 1,
         page_size: serverPagination ? pageSize : 100,
       }),
+    placeholderData: keepPreviousData,
     refetchInterval: (query) => {
       const items = query.state.data?.items ?? [];
       return items.some((item) => item.status === "queued" || item.status === "running") ? 3000 : false;
