@@ -95,7 +95,9 @@ func (s *Service) List(ctx context.Context, f Filter) ([]Record, int64, error) {
 		f.PageSize = 100
 	}
 
-	where := []string{"1=1"}
+	// Audit is for human operations. Legacy scheduler-generated records are
+	// retained in storage but excluded from the UI/API list.
+	where := []string{"NOT (action IN ('schedule.run', 'schedule.skip', 'schedule.error') AND (user_id IS NULL OR user_id = ''))"}
 	args := []any{}
 	if f.ActorID != "" {
 		where = append(where, "user_id = ?")

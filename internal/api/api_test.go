@@ -92,7 +92,7 @@ func newTestEnv(t *testing.T) *testEnv {
 		MaxDownloadBytes: 10 * 1024 * 1024,
 		Concurrency:      2,
 	})
-	scheduleSvc := schedule.NewService(st.DB, toolSvc, flowSvc, credSvc, engine, notifySvc, audit.NewService(st.DB), time.UTC)
+	scheduleSvc := schedule.NewService(st.DB, toolSvc, flowSvc, credSvc, engine, notifySvc, time.UTC)
 	if err := scheduleSvc.Start(context.Background()); err != nil {
 		t.Fatalf("schedule start: %v", err)
 	}

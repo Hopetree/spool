@@ -14,7 +14,6 @@ import (
 	"github.com/jmoiron/sqlx"
 	"github.com/robfig/cron/v3"
 
-	"github.com/Hopetree/spool/internal/audit"
 	"github.com/Hopetree/spool/internal/credential"
 	"github.com/Hopetree/spool/internal/exec"
 	"github.com/Hopetree/spool/internal/flow"
@@ -125,7 +124,6 @@ type Service struct {
 	creds    *credential.Service
 	engine   *exec.Engine
 	notifier *notify.Service
-	audit    *audit.Service
 	loc      *time.Location
 	parser   cron.Parser
 	cron     *cron.Cron
@@ -136,11 +134,11 @@ type Service struct {
 
 // NewService builds a schedule Service.
 func NewService(db *sqlx.DB, tools *tool.Service, flows *flow.Service, creds *credential.Service,
-	engine *exec.Engine, notifier *notify.Service, auditSvc *audit.Service, loc *time.Location) *Service {
+	engine *exec.Engine, notifier *notify.Service, loc *time.Location) *Service {
 	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow | cron.Descriptor)
 	return &Service{
 		db: db, tools: tools, flows: flows, creds: creds, engine: engine,
-		notifier: notifier, audit: auditSvc, loc: loc, parser: parser,
+		notifier: notifier, loc: loc, parser: parser,
 		cron:    cron.New(cron.WithLocation(loc), cron.WithParser(parser), cron.WithChain(cron.Recover(cron.DefaultLogger))),
 		entries: make(map[string]cron.EntryID),
 	}
@@ -542,16 +540,6 @@ func (s *Service) Preview(expr string, count int) ([]int64, error) {
 	return out, nil
 }
 
-func (s *Service) writeAudit(ctx context.Context, action, id, name string, summary map[string]any) {
-	if s.audit == nil {
-		return
-	}
-	_ = s.audit.Write(ctx, audit.Entry{
-		ActorName: "scheduler", Action: action, ResourceType: "schedule",
-		ResourceID: id, ResourceName: name, Summary: summary,
-	})
-}
-
 func (s *Service) submit(ctx context.Context, sch *Schedule, source, actorID string) (*exec.Execution, error) {
 	sensitiveOld, err := s.decryptSensitive(sch)
 	if err != nil {
@@ -673,22 +661,18 @@ func (s *Service) fire(id string) {
 	if err != nil || !sch.Enabled {
 		return
 	}
-	start := time.Now()
 	if sch.ConcurrencyPolicy == "skip" && s.running(ctx, id) {
 		s.recordNoRun(ctx, sch, "skipped", "上一次执行仍在进行，本次跳过")
-		s.writeAudit(ctx, "schedule.skip", sch.ID, sch.Name, map[string]any{"reason": "previous still running"})
 		log.Info("skipped: previous run still active")
 		return
 	}
 	ex, err := s.submit(ctx, sch, "schedule", "scheduler")
 	if err != nil {
 		s.recordNoRun(ctx, sch, "failed", "触发失败："+err.Error())
-		s.writeAudit(ctx, "schedule.error", sch.ID, sch.Name, map[string]any{"error": err.Error()})
 		log.Error("trigger failed", "err", err)
 		return
 	}
 	_, _ = s.db.ExecContext(ctx, `UPDATE schedules SET last_run_at = ? WHERE id = ?`, s.nowMs(), id)
-	s.writeAudit(ctx, "schedule.run", sch.ID, sch.Name, map[string]any{"execution_id": ex.ID, "elapsed_ms": time.Since(start).Milliseconds()})
 	log.Info("triggered", "execution", ex.ID)
 }
 

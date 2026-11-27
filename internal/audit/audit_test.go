@@ -85,6 +85,35 @@ func TestListPagination(t *testing.T) {
 	}
 }
 
+func TestListHidesAutomatedScheduleRuns(t *testing.T) {
+	svc, _ := newTestAudit(t)
+	ctx := context.Background()
+	entries := []Entry{
+		{Action: "schedule.run", ResourceType: "schedule", Summary: map[string]any{"execution_id": "e1"}},
+		{Action: "schedule.skip", ResourceType: "schedule"},
+		{Action: "schedule.error", ResourceType: "schedule"},
+		{ActorID: "u1", ActorName: "alice", Action: "schedule.trigger", ResourceType: "schedule"},
+		{ActorID: "u1", ActorName: "alice", Action: "schedule.create", ResourceType: "schedule"},
+	}
+	for _, entry := range entries {
+		if err := svc.Write(ctx, entry); err != nil {
+			t.Fatal(err)
+		}
+	}
+	recs, total, err := svc.List(ctx, Filter{Page: 1, PageSize: 20})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if total != 2 || len(recs) != 2 {
+		t.Fatalf("total=%d len=%d recs=%+v", total, len(recs), recs)
+	}
+	for _, rec := range recs {
+		if rec.Action != "schedule.trigger" && rec.Action != "schedule.create" {
+			t.Fatalf("unexpected automated record: %+v", rec)
+		}
+	}
+}
+
 func TestListFillsMissingHostResourceName(t *testing.T) {
 	svc, st := newTestAudit(t)
 	ctx := context.Background()
@@ -127,7 +156,7 @@ func TestListEnrichesSummaryDisplay(t *testing.T) {
 		{Action: "transfer.download", ResourceType: "transfer", Summary: map[string]any{
 			"host_id": "h1", "host_run": "01M8B4XQV4BRXAS9J6PNHYR85H", "path": "/tmp/a.txt",
 		}},
-		{Action: "schedule.run", ResourceType: "schedule", Summary: map[string]any{
+		{ActorID: "u1", ActorName: "alice", Action: "schedule.trigger", ResourceType: "schedule", Summary: map[string]any{
 			"execution_id": "e1", "elapsed_ms": 12,
 		}},
 		{Action: "flow.copy", ResourceType: "flow", Summary: map[string]any{"source": "missing"}},
@@ -156,8 +185,8 @@ func TestListEnrichesSummaryDisplay(t *testing.T) {
 	if _, ok := download["host_run"]; ok {
 		t.Fatalf("host_run should be hidden: %+v", download)
 	}
-	if byAction["schedule.run"]["execution_id"] != "夜间巡检" {
-		t.Fatalf("schedule summary = %+v", byAction["schedule.run"])
+	if byAction["schedule.trigger"]["execution_id"] != "夜间巡检" {
+		t.Fatalf("schedule summary = %+v", byAction["schedule.trigger"])
 	}
 	if _, ok := byAction["flow.copy"]["source"]; ok {
 		t.Fatalf("unresolved source should be hidden: %+v", byAction["flow.copy"])

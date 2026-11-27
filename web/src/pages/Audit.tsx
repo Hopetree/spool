@@ -45,7 +45,6 @@ const actionLabels: Record<string, string> = {
   "schedule.delete": "删除定时任务",
   "schedule.enabled": "启停定时任务",
   "schedule.trigger": "手动触发任务",
-  "schedule.run": "定时执行任务",
   "notify.create": "新建通知渠道",
   "notify.update": "编辑通知渠道",
   "notify.delete": "删除通知渠道",

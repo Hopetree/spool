@@ -35,7 +35,7 @@ func newFixture(t *testing.T) *fixture {
 	creds := credential.NewService(st.DB, cipher)
 	tools := tool.NewService(st.DB)
 	flows := flow.NewService(st.DB, tools)
-	svc := NewService(st.DB, tools, flows, creds, nil, nil, nil, time.UTC)
+	svc := NewService(st.DB, tools, flows, creds, nil, nil, time.UTC)
 
 	cred, err := creds.Create(context.Background(), credential.Input{
 		Name: "c", AuthType: "password", Username: "root", Secret: "pw",

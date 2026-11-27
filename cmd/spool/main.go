@@ -112,7 +112,7 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	scheduleSvc := schedule.NewService(st.DB, toolSvc, flowSvc, credSvc, engine, notifySvc, auditSvc, loc)
+	scheduleSvc := schedule.NewService(st.DB, toolSvc, flowSvc, credSvc, engine, notifySvc, loc)
 	engine.SetOnFinish(func(id string) { scheduleSvc.HandleExecutionFinished(context.Background(), id) })
 	if err := scheduleSvc.Start(context.Background()); err != nil {
 		return err
