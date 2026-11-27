@@ -76,11 +76,15 @@ export default function LogViewer({
   active,
   hostRunID,
   stepRunID,
+  heading,
+  showJumpControls,
 }: {
   executionId: string;
   active: boolean;
   hostRunID?: string;
   stepRunID?: string;
+  heading?: string;
+  showJumpControls?: boolean;
 }) {
   const { message } = AntApp.useApp();
   const [viewer, setViewer] = useState<ViewerState>(emptyViewer);
@@ -151,8 +155,36 @@ export default function LogViewer({
     }
   };
 
+  const scrollToStart = () => {
+    if (boxRef.current) boxRef.current.scrollTop = 0;
+    setFollow(false);
+  };
+
+  const scrollToEnd = () => {
+    if (boxRef.current) boxRef.current.scrollTop = boxRef.current.scrollHeight;
+    setFollow(true);
+  };
+
   return (
     <div>
+      {(heading || showJumpControls) && (
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            gap: 8,
+            marginBottom: 8,
+          }}
+        >
+          <span style={{ fontSize: 13, fontWeight: 600, color: "#262626" }}>{heading}</span>
+          {showJumpControls && (
+            <Button type="link" size="small" style={{ paddingInline: 0 }} onClick={scrollToEnd}>
+              回到结尾
+            </Button>
+          )}
+        </div>
+      )}
       <Space style={{ marginBottom: 8 }} wrap size={8}>
         <Input
           size="small"
@@ -226,6 +258,13 @@ export default function LogViewer({
           ))
         )}
       </div>
+      {showJumpControls && (
+        <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 4 }}>
+          <Button type="link" size="small" style={{ paddingInline: 0 }} onClick={scrollToStart}>
+            回到开头
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

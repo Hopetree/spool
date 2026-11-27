@@ -7,12 +7,14 @@ import {
   Descriptions,
   Empty,
   Input,
+  Modal,
   Popconfirm,
   Space,
   Table,
   Tag,
   Typography,
 } from "antd";
+import { SearchOutlined } from "@ant-design/icons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import dayjs from "dayjs";
@@ -26,6 +28,7 @@ import {
   type StepRun,
 } from "../api/executions";
 import { ApiError } from "../api/client";
+import { listHosts } from "../api/hosts";
 import { listTools } from "../api/tools";
 import ExecutionGraph from "../components/ExecutionGraph";
 import PageHeader from "../components/PageHeader";
@@ -53,6 +56,8 @@ export default function ExecutionDetail() {
   const { message } = AntApp.useApp();
   const [selectedHost, setSelectedHost] = useState<string>();
   const [hostQuery, setHostQuery] = useState("");
+  const [hostStatusFilter, setHostStatusFilter] = useState<string>();
+  const [targetsOpen, setTargetsOpen] = useState(false);
   const [selectedNodeID, setSelectedNodeID] = useState<string>();
   const [selectedStepID, setSelectedStepID] = useState<string>();
 
@@ -66,6 +71,13 @@ export default function ExecutionDetail() {
     },
   });
 
+  const { data: hostPage, isLoading: hostsLoading } = useQuery({
+    queryKey: ["hosts", "execution-targets"],
+    queryFn: () => listHosts({ page: 1, page_size: 100 }),
+    enabled: targetsOpen,
+  });
+  const hostByID = new Map((hostPage?.items ?? []).map((host) => [host.id, host]));
+
   useEffect(() => {
     const hosts = data?.host_runs ?? [];
     setSelectedHost((prev) => {
@@ -74,8 +86,7 @@ export default function ExecutionDetail() {
     });
   }, [data]);
 
-  const cancel = useMutation({
-    mutationFn: () => cancelExecution(id!),
+  const cancel = useMutation({    mutationFn: () => cancelExecution(id!),
     onSuccess: () => {
       message.success("已请求取消");
       void qc.invalidateQueries({ queryKey: ["execution", id] });
@@ -109,16 +120,27 @@ export default function ExecutionDetail() {
   (data?.step_runs ?? []).forEach((s) => {
     if (!stepByHost.has(s.host_run_id)) stepByHost.set(s.host_run_id, s);
   });
-  const currentHost = data?.host_runs.find((h) => h.id === selectedHost);
   const hostCounts = {
     running: (data?.host_runs ?? []).filter((h) => h.status === "queued" || h.status === "running").length,
     success: (data?.host_runs ?? []).filter((h) => h.status === "success").length,
     failed: (data?.host_runs ?? []).filter((h) => h.status === "failed").length,
     cancelled: (data?.host_runs ?? []).filter((h) => h.status === "cancelled").length,
   };
-  const visibleHosts = (data?.host_runs ?? []).filter(
-    (h) => !hostQuery || h.host_name.toLowerCase().includes(hostQuery.toLowerCase()),
-  );
+  const visibleHosts = (data?.host_runs ?? []).filter((h) => {
+    if (hostQuery && !h.host_name.toLowerCase().includes(hostQuery.toLowerCase())) return false;
+    if (!hostStatusFilter) return true;
+    if (hostStatusFilter === "running") return h.status === "running" || h.status === "queued";
+    return h.status === hostStatusFilter;
+  });
+  const selectedVisibleHost = visibleHosts.find((h) => h.id === selectedHost) ?? visibleHosts[0];
+  const hostFilters = [
+    { key: "running", label: "执行中", count: hostCounts.running, color: "#1677ff" },
+    { key: "success", label: "成功", count: hostCounts.success, color: "#52c41a" },
+    { key: "failed", label: "失败", count: hostCounts.failed, color: "#ff4d4f" },
+    ...(hostCounts.cancelled > 0
+      ? [{ key: "cancelled", label: "取消", count: hostCounts.cancelled, color: "#8c8c8c" }]
+      : []),
+  ];
   const copyHostNames = async () => {
     try {
       await navigator.clipboard.writeText((data?.host_runs ?? []).map((h) => h.host_name).join("\n"));
@@ -197,14 +219,13 @@ export default function ExecutionDetail() {
   return (
     <div>
       <PageHeader
-        back={{ label: toolDetailPath ? "返回工具" : "返回列表", onClick: () => navigate(backPath) }}
         title={data?.name || "执行详情"}
         subtitle={data ? <ExecutionStatusTag status={data.status} /> : undefined}
         crumbs={
-          toolDetailPath
+          data?.kind === "tool"
             ? [
                 { title: "工具", to: "/tools" },
-                { title: data?.name || "工具详情", to: toolDetailPath },
+                { title: "执行历史", to: "/tools/executions" },
                 { title: "执行详情" },
               ]
             : [
@@ -275,7 +296,11 @@ export default function ExecutionDetail() {
               {
                 key: "hosts",
                 label: "执行目标",
-                children: `成功 ${data.host_success} / 失败 ${data.host_failed} / 取消 ${data.host_cancelled} / 共 ${data.host_total}`,
+                children: (
+                  <Button type="link" size="small" style={{ padding: 0 }} onClick={() => setTargetsOpen(true)}>
+                    查看主机（{data.host_total}）
+                  </Button>
+                ),
               },
               {
                 key: "params",
@@ -308,135 +333,146 @@ export default function ExecutionDetail() {
       )}
 
       {id && singleStep && (
-        <Card
-          title={
-            <Space>
-              主机与输出
-              <Typography.Text type="secondary" style={{ fontWeight: 400, fontSize: 12 }}>
-                共 {data?.host_runs.length ?? 0} 台
-              </Typography.Text>
-            </Space>
-          }
-          style={{ marginBottom: 16 }}
-        >
+        <Card style={{ marginBottom: 16 }} styles={{ body: { padding: 16 } }}>
           {!data || data.host_runs.length === 0 ? (
             <Empty description="没有主机执行记录" />
           ) : (
             <div style={{ display: "flex", gap: 16, alignItems: "flex-start" }}>
-              <div style={{ width: 320, flex: "0 0 320px", maxHeight: 600, overflow: "auto" }}>
-                <Space wrap size={12} style={{ marginBottom: 8, fontSize: 12 }}>
-                  <span style={{ color: "#1677ff" }}>执行中 {hostCounts.running}</span>
-                  <span style={{ color: "#52c41a" }}>成功 {hostCounts.success}</span>
-                  <span style={{ color: "#ff4d4f" }}>失败 {hostCounts.failed}</span>
-                  <span style={{ color: "#8c8c8c" }}>取消 {hostCounts.cancelled}</span>
-                </Space>
-                <Space.Compact style={{ width: "100%", marginBottom: 8 }}>
-                  <Input
-                    allowClear
-                    size="small"
-                    placeholder="搜索主机"
-                    onChange={(e) => setHostQuery(e.target.value)}
-                  />
-                  <Button size="small" onClick={copyHostNames}>
-                    复制主机名
-                  </Button>
-                </Space.Compact>
-                {visibleHosts.map((h) => {
-                  const step = stepByHost.get(h.id);
-                  const selected = h.id === selectedHost;
-                  return (
-                    <div
-                      key={h.id}
-                      onClick={() => setSelectedHost(h.id)}
-                      style={{
-                        padding: "10px 12px",
-                        marginBottom: 8,
-                        borderRadius: 6,
-                        cursor: "pointer",
-                        border: selected ? "1px solid #1677ff" : "1px solid #f0f0f0",
-                        background: selected ? "#f0f7ff" : "#fff",
-                      }}
-                    >
-                      <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
-                        <strong
-                          style={{
-                            overflow: "hidden",
-                            textOverflow: "ellipsis",
-                            whiteSpace: "nowrap",
-                          }}
-                        >
-                          {h.host_name}
-                        </strong>
-                        <ExecutionStatusTag status={h.status} />
-                      </div>
-                      <div style={{ fontSize: 12, color: "#8c8c8c", marginTop: 4 }}>
-                        耗时 {duration(h.started_at, h.finished_at)}
-                        {step?.exit_code !== null && step?.exit_code !== undefined && ` · 退出码 ${step.exit_code}`}
-                        {step?.truncated && " · 输出已截断"}
-                      </div>
-                      {h.error_message && (
-                        <div
-                          style={{
-                            fontSize: 12,
-                            color: "#cf1322",
-                            marginTop: 4,
-                            overflow: "hidden",
-                            textOverflow: "ellipsis",
-                            whiteSpace: "nowrap",
-                          }}
-                          title={h.error_message}
-                        >
-                          {h.error_message}
-                        </div>
-                      )}
-                      {(h.status === "running" || h.status === "queued") && (
-                        <div style={{ marginTop: 6 }}>
-                          <Popconfirm
-                            title="取消该主机的执行？"
-                            onConfirm={(e) => {
-                              e?.stopPropagation();
-                              cancelHost.mutate(h.id);
+              <div style={{ width: 340, flex: "0 0 340px", maxHeight: 640, overflow: "auto" }}>
+                <Input
+                  allowClear
+                  size="small"
+                  prefix={<SearchOutlined style={{ color: "#bfbfbf" }} />}
+                  placeholder="搜索主机名"
+                  value={hostQuery}
+                  onChange={(e) => setHostQuery(e.target.value)}
+                  style={{ marginBottom: 10 }}
+                />
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 12 }}>
+                  {hostFilters.map((filter) => {
+                    const checked = hostStatusFilter === filter.key;
+                    return (
+                      <span
+                        key={filter.key}
+                        title={checked ? "再次点击取消筛选" : `只看${filter.label}的主机`}
+                        onClick={() => setHostStatusFilter(checked ? undefined : filter.key)}
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 6,
+                          padding: "3px 10px",
+                          borderRadius: 14,
+                          border: `1px solid ${checked ? filter.color : "#e8e8e8"}`,
+                          background: checked ? `${filter.color}14` : "#fafafa",
+                          color: checked ? filter.color : "#595959",
+                          cursor: "pointer",
+                          fontSize: 12,
+                          lineHeight: "18px",
+                          userSelect: "none",
+                        }}
+                      >
+                        <span style={{ width: 6, height: 6, borderRadius: 3, background: filter.color }} />
+                        {filter.label} ({filter.count})
+                      </span>
+                    );
+                  })}
+                </div>
+                {visibleHosts.length === 0 ? (
+                  <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="没有匹配的主机" />
+                ) : (
+                  visibleHosts.map((h) => {
+                    const step = stepByHost.get(h.id);
+                    const selected = h.id === selectedVisibleHost?.id;
+                    return (
+                      <div
+                        key={h.id}
+                        onClick={() => setSelectedHost(h.id)}
+                        style={{
+                          padding: "10px 12px",
+                          marginBottom: 8,
+                          borderRadius: 6,
+                          cursor: "pointer",
+                          border: selected ? "1px solid #1677ff" : "1px solid #f0f0f0",
+                          background: selected ? "#f0f7ff" : "#fff",
+                        }}
+                      >
+                        <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
+                          <strong
+                            title={h.host_name}
+                            style={{
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
                             }}
                           >
-                            <Button size="small" danger onClick={(e) => e.stopPropagation()}>
-                              取消该主机
-                            </Button>
-                          </Popconfirm>
+                            {h.host_name}
+                          </strong>
+                          <ExecutionStatusTag status={h.status} />
                         </div>
-                      )}
-                    </div>
-                  );
-                })}
+                        <div style={{ fontSize: 12, color: "#8c8c8c", marginTop: 4 }}>
+                          耗时 {duration(h.started_at, h.finished_at)}
+                          {step?.exit_code !== null && step?.exit_code !== undefined && ` · 退出码 ${step.exit_code}`}
+                          {step?.truncated && " · 输出已截断"}
+                        </div>
+                        {h.error_message && (
+                          <div
+                            style={{
+                              fontSize: 12,
+                              color: "#cf1322",
+                              marginTop: 4,
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                            }}
+                            title={h.error_message}
+                          >
+                            {h.error_message}
+                          </div>
+                        )}
+                        {(h.status === "running" || h.status === "queued") && (
+                          <div style={{ marginTop: 6 }}>
+                            <Popconfirm
+                              title="取消该主机的执行？"
+                              onConfirm={(e) => {
+                                e?.stopPropagation();
+                                cancelHost.mutate(h.id);
+                              }}
+                            >
+                              <Button size="small" danger onClick={(e) => e.stopPropagation()}>
+                                取消该主机
+                              </Button>
+                            </Popconfirm>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })
+                )}
+                <Button block style={{ marginTop: 4 }} onClick={copyHostNames}>
+                  复制主机名
+                </Button>
               </div>
 
               <div style={{ flex: 1, minWidth: 0 }}>
-                {currentHost && (
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                      marginBottom: 8,
-                      gap: 8,
-                    }}
-                  >
-                    <Space>
-                      <Typography.Text strong>{currentHost.host_name}</Typography.Text>
-                      {currentHost.error_message && (
-                        <Typography.Text type="danger" style={{ fontSize: 12 }}>
-                          {currentHost.error_message}
-                        </Typography.Text>
-                      )}
-                    </Space>
-                    <Button size="small" href={logDownloadUrl(id, currentHost.id)} target="_blank">
-                      下载该主机日志
-                    </Button>
-                  </div>
+                {selectedVisibleHost?.error_message && (
+                  <Alert
+                    type="error"
+                    showIcon
+                    message={selectedVisibleHost.error_message}
+                    style={{ marginBottom: 8 }}
+                  />
                 )}
-                {currentHost?.error_message && (
-                  <Alert type="error" showIcon message={currentHost.error_message} style={{ marginBottom: 8 }} />
+                {selectedVisibleHost ? (
+                  <LogViewer
+                    executionId={id}
+                    active={!!active}
+                    hostRunID={selectedVisibleHost.id}
+                    heading="执行日志"
+                    showJumpControls
+                  />
+                ) : (
+                  <Empty description="没有匹配的主机" />
                 )}
-                <LogViewer executionId={id} active={!!active} hostRunID={selectedHost} />
               </div>
             </div>
           )}
@@ -718,6 +754,63 @@ export default function ExecutionDetail() {
           )}
         </>
       )}
+
+      <Modal
+        open={targetsOpen}
+        onCancel={() => setTargetsOpen(false)}
+        title={`执行目标（${data?.host_total ?? 0} 台）`}
+        footer={null}
+        width={860}
+      >
+        <Table<HostRun>
+          rowKey="id"
+          size="small"
+          loading={hostsLoading}
+          dataSource={data?.host_runs ?? []}
+          pagination={false}
+          scroll={{ y: 420 }}
+          columns={[
+            { title: "主机", dataIndex: "host_name", width: 160, ellipsis: true },
+            {
+              title: "地址",
+              width: 160,
+              render: (_, r) => {
+                const host = hostByID.get(r.host_id);
+                return host ? `${host.address}:${host.port}` : "—";
+              },
+            },
+            {
+              title: "分组",
+              width: 120,
+              ellipsis: true,
+              render: (_, r) => hostByID.get(r.host_id)?.group_name || "—",
+            },
+            {
+              title: "标签",
+              width: 200,
+              render: (_, r) => {
+                const tags = hostByID.get(r.host_id)?.tags ?? [];
+                return tags.length > 0 ? (
+                  <Space wrap size={4}>
+                    {tags.map((tag) => (
+                      <Tag key={tag}>{tag}</Tag>
+                    ))}
+                  </Space>
+                ) : (
+                  "—"
+                );
+              },
+            },
+            {
+              title: "状态",
+              width: 100,
+              render: (_, r) => <ExecutionStatusTag status={r.status} />,
+            },
+            { title: "耗时", width: 90, render: (_, r) => duration(r.started_at, r.finished_at) },
+            { title: "错误", dataIndex: "error_message", ellipsis: true },
+          ]}
+        />
+      </Modal>
     </div>
   );
 }
