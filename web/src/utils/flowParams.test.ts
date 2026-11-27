@@ -27,7 +27,7 @@ function tool(id: string, name: string, params: ToolParam[]): ToolSummary {
     content_hash: "",
     param_count: params.length,
     params,
-    host_param: { label: "执行主机", default_host_ids: ["h1"] },
+    host_param: { default_host_ids: ["h1"] },
     created_at: 0,
     updated_at: 0,
   };

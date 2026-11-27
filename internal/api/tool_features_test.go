@@ -11,7 +11,7 @@ func createCategorizedTool(t *testing.T, e *testEnv, cookie *http.Cookie, name, 
 	w := e.do(t, http.MethodPost, "/api/v1/tools", map[string]any{
 		"name": name, "category": category, "type": "shell", "interpreter": "/bin/bash",
 		"content": "echo " + name, "params": params, "timeout_sec": 30,
-		"host_param": map[string]any{"label": "执行主机", "default_host_ids": []string{"h1"}},
+		"host_param": map[string]any{"default_host_ids": []string{"h1"}},
 	}, cookie)
 	if w.Code != http.StatusCreated {
 		t.Fatalf("create tool %s: status = %d, body = %s", name, w.Code, w.Body.String())

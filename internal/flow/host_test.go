@@ -11,7 +11,7 @@ func createHostTool(t *testing.T, tools *tool.Service, name string, defaults []s
 	t.Helper()
 	d, err := tools.Create(context.Background(), tool.Input{
 		Name: name, Type: "shell", Content: "echo " + name,
-		HostParam: tool.HostParam{Label: "执行主机", DefaultHostIDs: defaults},
+		HostParam: tool.HostParam{DefaultHostIDs: defaults},
 		Params:    params, TimeoutSec: 30,
 	}, "admin")
 	if err != nil {

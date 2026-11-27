@@ -32,9 +32,9 @@ var envNameRe = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 // execution host selection through the flow parameter model.
 const HostParamName = "SPOOL_HOST"
 
-// HostParam configures the built-in execution host parameter of a tool.
+// HostParam configures the built-in execution host parameter of a tool. The
+// display name is fixed; flows can only rename the execution input title.
 type HostParam struct {
-	Label          string   `json:"label"`
 	DefaultHostIDs []string `json:"default_host_ids"`
 }
 
@@ -94,10 +94,7 @@ type Version struct {
 // tool parameters. Flows use this view so the host parameter participates in
 // the same default/fixed/input/reference resolution as other parameters.
 func (v Version) FlowParams() []Param {
-	label := strings.TrimSpace(v.HostParam.Label)
-	if label == "" {
-		label = "执行主机"
-	}
+	const label = "执行主机"
 	ids := v.HostParam.DefaultHostIDs
 	if ids == nil {
 		ids = []string{}
@@ -392,13 +389,6 @@ func validateInput(in *Input) error {
 	}
 	if len(in.ChangeNote) > 200 {
 		return invalid("变更说明不能超过 200 个字符")
-	}
-	in.HostParam.Label = strings.TrimSpace(in.HostParam.Label)
-	if in.HostParam.Label == "" {
-		in.HostParam.Label = "执行主机"
-	}
-	if len(in.HostParam.Label) > 64 {
-		return invalid("执行主机参数的显示名称不能超过 64 个字符")
 	}
 	ids := make([]string, 0, len(in.HostParam.DefaultHostIDs))
 	seen := map[string]bool{}

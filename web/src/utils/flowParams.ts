@@ -103,7 +103,7 @@ export function toolFlowParams(tool: ToolSummary | undefined): ToolParam[] {
   const host = tool.host_param;
   const hostParam: ToolParam = {
     name: "SPOOL_HOST",
-    label: host?.label || "执行主机",
+    label: "执行主机",
     type: "host",
     required: true,
     default: JSON.stringify(host?.default_host_ids ?? []),

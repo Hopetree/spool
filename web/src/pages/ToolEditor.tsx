@@ -50,7 +50,6 @@ interface FormValues {
   timeout_sec?: number;
   sudo?: boolean;
   change_note?: string;
-  host_label?: string;
   host_default_ids?: string[];
   params?: ParamForm[];
 }
@@ -104,7 +103,6 @@ export default function ToolEditor() {
       timeout_sec: detail.version.timeout_sec,
       sudo: detail.version.sudo,
       change_note: "",
-      host_label: detail.host_param?.label || "执行主机",
       host_default_ids: detail.host_param?.default_host_ids ?? [],
       params: detail.version.params.map((p) => ({ ...p, optionsText: (p.options ?? []).join(", ") })),
     });
@@ -124,7 +122,6 @@ export default function ToolEditor() {
         sudo: !!values.sudo,
         change_note: values.change_note ?? "",
         host_param: {
-          label: values.host_label || "执行主机",
           default_host_ids: values.host_default_ids ?? [],
         },
         params: (values.params ?? []).map((p) => ({
@@ -179,7 +176,6 @@ export default function ToolEditor() {
           interpreter: "/bin/bash",
           timeout_sec: 300,
           sudo: false,
-          host_label: "执行主机",
           host_default_ids: [],
           params: [],
           category: "",
@@ -248,9 +244,6 @@ export default function ToolEditor() {
 
         <Card title="执行主机参数" style={{ marginBottom: 16 }}>
           <Space wrap align="start">
-            <Form.Item name="host_label" label="显示名称" style={{ width: 220 }}>
-              <Input placeholder="执行主机" />
-            </Form.Item>
             <Form.Item
               name="host_default_ids"
               label="默认主机"

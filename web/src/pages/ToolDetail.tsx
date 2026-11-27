@@ -281,7 +281,6 @@ export default function ToolDetail() {
             column={2}
             style={{ marginTop: 8, marginBottom: 16 }}
             items={[
-              { key: "label", label: "显示名称", children: detail.host_param?.label || "执行主机" },
               {
                 key: "defaults",
                 label: "默认主机",

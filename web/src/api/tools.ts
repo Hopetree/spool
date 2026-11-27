@@ -4,7 +4,6 @@ export type ParamType = "string" | "int" | "bool" | "select" | "host";
 export type ToolType = "shell" | "python";
 
 export interface HostParam {
-  label: string;
   default_host_ids: string[];
 }
 
