@@ -241,11 +241,6 @@ export default function FlowEditor() {
     setSelectedNodeID(nodeID);
   }, []);
 
-  const addNode = () => {
-    const rightMost = nodes.reduce((max, n) => Math.max(max, n.position.x), 0);
-    addNodeAt({ x: rightMost + 260, y: 60 + (nodes.length % 5) * 110 }, "start");
-  };
-
   // Drop a connection on empty canvas to create a connected node there.
   const onConnectEnd: OnConnectEnd = useCallback(
     (event, state: FinalConnectionState) => {
@@ -365,12 +360,9 @@ export default function FlowEditor() {
         subtitle={`${nodeCount} 个节点 · ${edgeCount} 条连线`}
         crumbs={[{ title: "流程", to: "/flows" }, { title: isNew ? "新建流程" : "编辑流程" }]}
         extra={
-          <>
-            {step === 1 && <Button onClick={addNode}>添加工具节点</Button>}
-            <Button type="primary" loading={save.isPending} onClick={() => form.submit()}>
-              保存流程
-            </Button>
-          </>
+          <Button type="primary" loading={save.isPending} onClick={() => form.submit()}>
+            保存流程
+          </Button>
         }
       />
 
@@ -490,17 +482,6 @@ export default function FlowEditor() {
           </Card>
         )}
       </Form>
-
-      <Space style={{ marginTop: 4 }}>
-        <Button disabled={step === 0} onClick={() => setStep((current) => current - 1)}>
-          上一步
-        </Button>
-        {step < 2 && (
-          <Button type="primary" onClick={() => setStep((current) => current + 1)}>
-            下一步
-          </Button>
-        )}
-      </Space>
 
       <Drawer
         open={!!selectedNode}
