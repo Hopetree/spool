@@ -138,6 +138,7 @@ export default function Files() {
       >
         <Form.Item label="文件">
           <Upload.Dragger
+            showUploadList={false}
             beforeUpload={(f) => {
               setFile(f);
               return false;
@@ -270,9 +271,16 @@ export default function Files() {
       rowKey="id"
       dataSource={history?.items ?? []}
       size="small"
-      onRow={(r) => ({ onClick: () => setActiveID(r.id), style: { cursor: "pointer" } })}
+      scroll={{ x: 1100 }}
       columns={[
         { title: "文件", dataIndex: "file_name", ellipsis: true },
+        {
+          title: "远端路径",
+          dataIndex: "remote_path",
+          width: 300,
+          ellipsis: true,
+          render: (v: string) => v || "—",
+        },
         {
           title: "方向",
           dataIndex: "direction",

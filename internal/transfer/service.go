@@ -8,7 +8,6 @@ import (
 	"io"
 	"os"
 	"path"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -47,6 +46,7 @@ type Transfer struct {
 	SizeBytes     int64  `json:"size_bytes"`
 	TargetTotal   int    `json:"target_total"`
 	Status        string `json:"status"`
+	RemotePath    string `json:"remote_path"`
 	CreatedBy     string `json:"created_by"`
 	CreatedByName string `json:"created_by_name"`
 	CreatedAt     int64  `json:"created_at"`
@@ -74,6 +74,7 @@ type transferRow struct {
 	SizeBytes     int64  `db:"size_bytes"`
 	TargetTotal   int    `db:"target_total"`
 	Status        string `db:"status"`
+	RemotePath    string `db:"remote_path"`
 	CreatedBy     string `db:"created_by"`
 	CreatedByName string `db:"created_by_name"`
 	CreatedAt     int64  `db:"created_at"`
@@ -96,8 +97,9 @@ type targetRow struct {
 func (r transferRow) view() Transfer {
 	return Transfer{
 		ID: r.ID, Direction: r.Direction, FileName: r.FileName, SizeBytes: r.SizeBytes,
-		TargetTotal: r.TargetTotal, Status: r.Status, CreatedBy: r.CreatedBy,
-		CreatedByName: r.CreatedByName, CreatedAt: r.CreatedAt, FinishedAt: r.FinishedAt,
+		TargetTotal: r.TargetTotal, Status: r.Status, RemotePath: r.RemotePath,
+		CreatedBy: r.CreatedBy, CreatedByName: r.CreatedByName, CreatedAt: r.CreatedAt,
+		FinishedAt: r.FinishedAt,
 	}
 }
 
@@ -210,9 +212,13 @@ func (s *Service) CreateUpload(ctx context.Context, req UploadRequest) (*Transfe
 	if !strings.HasPrefix(req.RemoteDir, "/") {
 		return nil, invalid("远端目录必须是绝对路径")
 	}
+	uploadName := path.Base(strings.ReplaceAll(req.FileName, "\\", "/"))
+	if uploadName == "" || uploadName == "." || uploadName == "/" {
+		uploadName = "upload"
+	}
 	name := strings.TrimSpace(req.RemoteName)
 	if name == "" {
-		name = filepath.Base(req.FileName)
+		name = uploadName
 	}
 	if strings.ContainsAny(name, "/\\") || name == "" || name == "." || name == ".." {
 		return nil, invalid("远端文件名不合法")
@@ -261,7 +267,7 @@ func (s *Service) CreateUpload(ctx context.Context, req UploadRequest) (*Transfe
 	}
 	defer func() { _ = tx.Rollback() }()
 	_, err = tx.ExecContext(ctx, `INSERT INTO transfers (id, direction, file_name, size_bytes, target_total, status, created_by, created_at)
-		VALUES (?, 'upload', ?, ?, ?, 'queued', ?, ?)`, id, name, req.Size, len(hosts), req.ActorID, now)
+		VALUES (?, 'upload', ?, ?, ?, 'queued', ?, ?)`, id, uploadName, req.Size, len(hosts), req.ActorID, now)
 	if err != nil {
 		return nil, fmt.Errorf("insert transfer: %w", err)
 	}
@@ -288,13 +294,16 @@ func (s *Service) CreateUpload(ctx context.Context, req UploadRequest) (*Transfe
 	return s.getTransfer(id)
 }
 
-func (s *Service) getTransfer(id string) (*Transfer, error) {
-	var r transferRow
-	err := s.db.Get(&r, `SELECT t.*, COALESCE(u.username, NULLIF(u.display_name, ''),
+const transferSelect = `SELECT t.*, COALESCE(u.username, NULLIF(u.display_name, ''),
 		(SELECT a.username_snapshot FROM audit_logs a WHERE a.resource_id = t.id
 		 AND a.action IN ('transfer.upload', 'transfer.download') AND a.username_snapshot <> ''
-		 ORDER BY a.ts DESC LIMIT 1), t.created_by) AS created_by_name
-		FROM transfers t LEFT JOIN users u ON u.id = t.created_by WHERE t.id = ?`, id)
+		 ORDER BY a.ts DESC LIMIT 1), t.created_by) AS created_by_name,
+		(SELECT tt.remote_path FROM transfer_targets tt WHERE tt.transfer_id = t.id ORDER BY tt.id LIMIT 1) AS remote_path
+		FROM transfers t LEFT JOIN users u ON u.id = t.created_by`
+
+func (s *Service) getTransfer(id string) (*Transfer, error) {
+	var r transferRow
+	err := s.db.Get(&r, transferSelect+` WHERE t.id = ?`, id)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -308,11 +317,7 @@ func (s *Service) getTransfer(id string) (*Transfer, error) {
 // Get returns a transfer with its targets.
 func (s *Service) Get(ctx context.Context, id string) (*Transfer, []Target, error) {
 	var r transferRow
-	err := s.db.GetContext(ctx, &r, `SELECT t.*, COALESCE(u.username, NULLIF(u.display_name, ''),
-		(SELECT a.username_snapshot FROM audit_logs a WHERE a.resource_id = t.id
-		 AND a.action IN ('transfer.upload', 'transfer.download') AND a.username_snapshot <> ''
-		 ORDER BY a.ts DESC LIMIT 1), t.created_by) AS created_by_name
-		FROM transfers t LEFT JOIN users u ON u.id = t.created_by WHERE t.id = ?`, id)
+	err := s.db.GetContext(ctx, &r, transferSelect+` WHERE t.id = ?`, id)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil, ErrNotFound
 	}
@@ -344,11 +349,7 @@ func (s *Service) List(ctx context.Context, page, pageSize int) ([]Transfer, int
 		return nil, 0, err
 	}
 	rows := []transferRow{}
-	if err := s.db.SelectContext(ctx, &rows, `SELECT t.*, COALESCE(u.username, NULLIF(u.display_name, ''),
-		(SELECT a.username_snapshot FROM audit_logs a WHERE a.resource_id = t.id
-		 AND a.action IN ('transfer.upload', 'transfer.download') AND a.username_snapshot <> ''
-		 ORDER BY a.ts DESC LIMIT 1), t.created_by) AS created_by_name
-		FROM transfers t LEFT JOIN users u ON u.id = t.created_by
+	if err := s.db.SelectContext(ctx, &rows, transferSelect+`
 		ORDER BY t.created_at DESC LIMIT ? OFFSET ?`, pageSize, (page-1)*pageSize); err != nil {
 		return nil, 0, err
 	}

@@ -7,6 +7,7 @@ export interface Transfer {
   size_bytes: number;
   target_total: number;
   status: string;
+  remote_path: string;
   created_by: string;
   created_by_name?: string;
   created_at: number;
