@@ -80,6 +80,7 @@ export interface ToolFilters {
   category?: string;
   uncategorized?: boolean;
   enabled?: boolean;
+  type?: string;
   page?: number;
   page_size?: number;
 }

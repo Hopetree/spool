@@ -194,6 +194,33 @@ func TestSetEnabledAndList(t *testing.T) {
 	}
 }
 
+func TestListByType(t *testing.T) {
+	svc, _ := newTestToolService(t)
+	ctx := context.Background()
+	shellTool, err := svc.Create(ctx, baseToolInput(), "admin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	pyInput := baseToolInput()
+	pyInput.Name = "collect"
+	pyInput.Type = "python"
+	pyInput.Interpreter = "python3"
+	pyInput.Content = "print('ok')"
+	pyTool, err := svc.Create(ctx, pyInput, "admin")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	items, total, err := svc.List(ctx, ListFilter{Type: "python", Page: 1, PageSize: 10})
+	if err != nil || total != 1 || len(items) != 1 || items[0].ID != pyTool.ID {
+		t.Fatalf("python list: total=%d items=%+v err=%v", total, items, err)
+	}
+	items, total, err = svc.List(ctx, ListFilter{Type: "shell", Page: 1, PageSize: 10})
+	if err != nil || total != 1 || len(items) != 1 || items[0].ID != shellTool.ID {
+		t.Fatalf("shell list: total=%d items=%+v err=%v", total, items, err)
+	}
+}
+
 func TestDuplicateName(t *testing.T) {
 	svc, _ := newTestToolService(t)
 	ctx := context.Background()

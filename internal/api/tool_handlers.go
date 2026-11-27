@@ -61,7 +61,7 @@ func writeToolError(c *gin.Context, err error) {
 
 func listToolsHandler(d Deps) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		f := tool.ListFilter{Keyword: c.Query("keyword"), Category: c.Query("category")}
+		f := tool.ListFilter{Keyword: c.Query("keyword"), Category: c.Query("category"), Type: c.Query("type")}
 		if c.Query("uncategorized") == "true" {
 			f.Uncategorized = true
 		}

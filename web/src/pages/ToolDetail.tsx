@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   App as AntApp,
   Button,
@@ -38,6 +38,7 @@ import CodeEditor from "../components/CodeEditor";
 import ExecuteToolModal from "../components/ExecuteToolModal";
 import ExecutionTable from "../components/ExecutionTable";
 import PageHeader from "../components/PageHeader";
+import { recordRecentTool } from "../utils/recentTools";
 import { useAuthStore } from "../stores/auth";
 
 export default function ToolDetail() {
@@ -69,6 +70,11 @@ export default function ToolDetail() {
     queryFn: () => getToolReferences(id!),
     enabled: !!id,
   });
+
+  useEffect(() => {
+    if (!detail) return;
+    recordRecentTool(user?.id, { id: detail.id, name: detail.name });
+  }, [detail?.id, detail?.name, user?.id]);
 
   const invalidate = () => {
     void qc.invalidateQueries({ queryKey: ["tools"] });

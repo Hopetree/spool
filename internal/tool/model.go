@@ -104,6 +104,7 @@ type ListFilter struct {
 	Category      string
 	Uncategorized bool
 	Enabled       *bool
+	Type          string
 	Page          int
 	PageSize      int
 }

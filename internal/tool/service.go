@@ -143,9 +143,14 @@ func (s *Service) List(ctx context.Context, f ListFilter) ([]Tool, int64, error)
 		where = append(where, "t.enabled = ?")
 		args = append(args, *f.Enabled)
 	}
+	if f.Type != "" {
+		where = append(where, "v.type = ?")
+		args = append(args, f.Type)
+	}
 	cond := strings.Join(where, " AND ")
 	var total int64
-	if err := s.db.GetContext(ctx, &total, `SELECT count(*) FROM tools t WHERE `+cond, args...); err != nil {
+	if err := s.db.GetContext(ctx, &total, `SELECT count(*) FROM tools t
+		JOIN tool_versions v ON v.id = t.current_version_id WHERE `+cond, args...); err != nil {
 		return nil, 0, fmt.Errorf("count tools: %w", err)
 	}
 	pageArgs := append([]any{}, args...)

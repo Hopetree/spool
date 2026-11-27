@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AppstoreOutlined, CodeOutlined, UnorderedListOutlined } from "@ant-design/icons";
 import { App as AntApp, Button, Card, Col, Empty, Input, Pagination, Row, Segmented, Select, Space, Switch, Table, Tag } from "antd";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -8,6 +8,7 @@ import { ApiError } from "../api/client";
 import {
   copyTool,
   deleteTool,
+  getTool,
   listToolCategories,
   listTools,
   setToolEnabled,
@@ -17,6 +18,7 @@ import ExecuteToolModal from "../components/ExecuteToolModal";
 import CategoryTree from "../components/CategoryTree";
 import PageHeader from "../components/PageHeader";
 import RowActions from "../components/RowActions";
+import { loadRecentTools } from "../utils/recentTools";
 import { useAuthStore } from "../stores/auth";
 
 export default function Tools() {
@@ -29,6 +31,7 @@ export default function Tools() {
 
   const [keyword, setKeyword] = useState("");
   const [enabled, setEnabled] = useState<string>();
+  const [toolType, setToolType] = useState<string>();
   const [selected, setSelected] = useState<string>("all");
   const [view, setView] = useState<"list" | "card">(() =>
     localStorage.getItem("spool.tools.view") === "card" ? "card" : "list",
@@ -37,29 +40,59 @@ export default function Tools() {
   const [cardPage, setCardPage] = useState(1);
   const cardPageSize = 9;
 
+  const recent = useMemo(() => loadRecentTools(user?.id), [user?.id]);
+  const recentIds = recent.map((tool) => tool.id);
+  const isRecent = selected === "__recent__";
+  const enabledFilter = enabled === "true" ? true : enabled === "false" ? false : undefined;
+
   const { data: categories = [] } = useQuery({ queryKey: ["tool-categories"], queryFn: listToolCategories });
 
+  const { data: recentTools = [], isLoading: recentLoading } = useQuery({
+    queryKey: ["tools", "recent", user?.id, recentIds.join(",")],
+    enabled: isRecent && recentIds.length > 0,
+    queryFn: async () => {
+      const results = await Promise.allSettled(recentIds.map((toolID) => getTool(toolID)));
+      const byID = new Map<string, ToolSummary>();
+      results.forEach((result, index) => {
+        if (result.status === "fulfilled") byID.set(recentIds[index], result.value);
+      });
+      return recentIds.map((toolID) => byID.get(toolID)).filter((tool): tool is ToolSummary => !!tool);
+    },
+  });
+
   const filtered = {
-    category: selected !== "all" && selected !== "__default__" ? selected : undefined,
+    category: selected !== "all" && selected !== "__default__" && selected !== "__recent__" ? selected : undefined,
     uncategorized: selected === "__default__" ? true : undefined,
   };
   const { data, isLoading } = useQuery({
-    queryKey: ["tools", { keyword, enabled, selected }],
+    queryKey: ["tools", { keyword, enabled, selected, toolType }],
+    enabled: !isRecent,
     queryFn: () =>
       listTools({
         keyword,
-        enabled: enabled === "true" ? true : enabled === "false" ? false : undefined,
+        enabled: enabledFilter,
+        type: toolType,
         ...filtered,
         page: 1,
         page_size: 100,
       }),
   });
-  const tools = data?.items ?? [];
+  const normalTools = data?.items ?? [];
+  const keywordText = keyword.trim().toLowerCase();
+  const tools = isRecent
+    ? recentTools.filter((tool) => {
+        if (keywordText && !`${tool.name} ${tool.description}`.toLowerCase().includes(keywordText)) return false;
+        if (enabledFilter !== undefined && tool.enabled !== enabledFilter) return false;
+        if (toolType && tool.type !== toolType) return false;
+        return true;
+      })
+    : normalTools;
+  const loading = isRecent ? recentLoading : isLoading;
   const pagedTools = tools.slice((cardPage - 1) * cardPageSize, cardPage * cardPageSize);
 
   useEffect(() => {
     setCardPage(1);
-  }, [keyword, enabled, selected]);
+  }, [keyword, enabled, selected, toolType]);
 
   const toggle = useMutation({
     mutationFn: (v: { id: string; value: boolean }) => setToolEnabled(v.id, v.value),
@@ -111,6 +144,7 @@ export default function Tools() {
           items={categories}
           selected={selected}
           onSelect={setSelected}
+          recentCount={recent.length}
         />
 
         <div style={{ flex: 1, minWidth: 0 }}>
@@ -118,6 +152,17 @@ export default function Tools() {
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
               <Space wrap>
                 <Input.Search allowClear placeholder="名称或描述" style={{ width: 220 }} onSearch={setKeyword} />
+                <Select
+                  allowClear
+                  placeholder="类型"
+                  style={{ width: 110 }}
+                  value={toolType}
+                  onChange={setToolType}
+                  options={[
+                    { value: "shell", label: "Shell" },
+                    { value: "python", label: "Python" },
+                  ]}
+                />
                 <Select
                   allowClear
                   placeholder="状态"
@@ -149,8 +194,9 @@ export default function Tools() {
           <Table<ToolSummary>
           rowKey="id"
           size="small"
-          loading={isLoading}
+          loading={loading}
           dataSource={tools}
+          locale={{ emptyText: isRecent ? "最近还没有访问过工具" : "没有匹配的工具" }}
           columns={[
             {
               title: "名称",
@@ -169,7 +215,9 @@ export default function Tools() {
               title: "类型",
               dataIndex: "type",
               width: 80,
-              render: (v: string) => <Tag color={v === "python" ? "blue" : "geekblue"}>{v}</Tag>,
+              render: (v: string) => (
+                <Tag color={v === "python" ? "blue" : "geekblue"}>{v === "python" ? "Python" : "Shell"}</Tag>
+              ),
             },
             { title: "版本", dataIndex: "version_no", width: 70, render: (v: number) => `v${v}` },
             {
@@ -300,7 +348,9 @@ export default function Tools() {
                         marginTop: 12,
                       }}
                     >
-                      <Tag color={tool.type === "python" ? "blue" : "geekblue"}>{tool.type}</Tag>
+                      <Tag color={tool.type === "python" ? "blue" : "geekblue"}>
+                        {tool.type === "python" ? "Python" : "Shell"}
+                      </Tag>
                       {canRun && (
                         <Button size="small" onClick={() => setExecTool(tool)}>
                           执行
@@ -310,9 +360,9 @@ export default function Tools() {
                   </Card>
                 </Col>
               ))}
-              {tools.length === 0 && !isLoading && (
+              {tools.length === 0 && !loading && (
                 <Col span={24}>
-                  <Empty description="没有匹配的工具" />
+                  <Empty description={isRecent ? "最近还没有访问过工具" : "没有匹配的工具"} />
                 </Col>
               )}
             </Row>

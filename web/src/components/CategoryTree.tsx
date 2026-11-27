@@ -70,7 +70,7 @@ function toTreeData(nodes: CatNode[]): DataNode[] {
 
 /**
  * Slash-separated category tree used by the tool and flow libraries.
- * `selected` is "all", "__default__" or a category path.
+ * `selected` is "all", "__default__", "__recent__" or a category path.
  */
 export default function CategoryTree({
   title = "分类",
@@ -78,6 +78,7 @@ export default function CategoryTree({
   items,
   selected,
   onSelect,
+  recentCount,
   width = 260,
 }: {
   title?: string;
@@ -85,6 +86,7 @@ export default function CategoryTree({
   items: CategoryItem[];
   selected: string;
   onSelect: (key: string) => void;
+  recentCount?: number;
   width?: number;
 }) {
   const [search, setSearch] = useState("");
@@ -104,6 +106,18 @@ export default function CategoryTree({
           </span>
         ),
         children: [
+          ...(recentCount === undefined
+            ? []
+            : [
+                {
+                  key: "__recent__",
+                  title: (
+                    <span>
+                      最近访问<span style={{ color: "#8c8c8c" }}> ({recentCount})</span>
+                    </span>
+                  ),
+                },
+              ]),
           {
             key: "__default__",
             title: (
@@ -116,7 +130,7 @@ export default function CategoryTree({
         ],
       },
     ];
-  }, [items, search, total, uncategorized, allLabel]);
+  }, [items, search, total, uncategorized, allLabel, recentCount]);
 
   // Categories load asynchronously, so defaultExpandAll cannot cover them.
   useEffect(() => {
