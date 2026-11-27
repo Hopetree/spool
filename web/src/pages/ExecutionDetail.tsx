@@ -147,14 +147,6 @@ export default function ExecutionDetail() {
       ? [{ key: "cancelled", label: "取消", count: hostCounts.cancelled, color: "#8c8c8c" }]
       : []),
   ];
-  const copyHostNames = async () => {
-    try {
-      await navigator.clipboard.writeText((data?.host_runs ?? []).map((h) => h.host_name).join("\n"));
-      message.success("已复制主机名");
-    } catch {
-      message.error("复制失败");
-    }
-  };
   const toolDetailPath = data?.kind === "tool" && data.ref_id ? `/tools/${data.ref_id}` : "";
   const backPath =
     data?.kind === "flow"
@@ -470,9 +462,6 @@ export default function ExecutionDetail() {
                     );
                   })
                 )}
-                <Button block style={{ marginTop: 4 }} onClick={copyHostNames}>
-                  复制主机名
-                </Button>
               </div>
 
               <div style={{ flex: 1, minWidth: 0 }}>

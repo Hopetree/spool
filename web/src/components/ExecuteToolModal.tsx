@@ -99,7 +99,7 @@ export default function ExecuteToolModal({
       title={`${rerun ? "再次执行" : "执行"}工具${tool ? `：${tool.name} v${tool.version.version_no}` : ""}`}
       onCancel={onClose}
       onOk={() => form.submit()}
-      okText={rerun ? "再次执行" : "执行"}
+      okText="执行"
       confirmLoading={run.isPending}
       width={640}
       destroyOnClose
