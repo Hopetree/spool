@@ -181,8 +181,11 @@ func listExecutionsHandler(d Deps) gin.HandlerFunc {
 			}
 		}
 		if v := strings.TrimSpace(c.Query("keyword")); v != "" {
-			where = append(where, "e.name_snapshot LIKE ?")
-			args = append(args, "%"+v+"%")
+			like := "%" + v + "%"
+			// Ad-hoc executions all share the same name; search their command
+			// text as well so the history search is useful.
+			where = append(where, "(e.name_snapshot LIKE ? OR (e.kind = 'adhoc' AND e.params_json LIKE ?))")
+			args = append(args, like, like)
 		}
 		cond := strings.Join(where, " AND ")
 		var total int64

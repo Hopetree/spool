@@ -4,7 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { ApiError } from "../api/client";
 import { runAdhoc } from "../api/executions";
 import { listHosts } from "../api/hosts";
-import ExecutionMiniList from "../components/ExecutionMiniList";
+import AdhocHistoryPanel from "../components/AdhocHistoryPanel";
 import PageHeader from "../components/PageHeader";
 
 interface FormValues {
@@ -76,12 +76,8 @@ export default function Adhoc() {
       </Form>
         </Card>
 
-        <Card
-          title="执行历史"
-          style={{ width: 520, flex: "0 0 520px" }}
-          extra={<span style={{ fontSize: 12, color: "#8c8c8c" }}>最近 10 条</span>}
-        >
-          <ExecutionMiniList kind="adhoc" limit={10} />
+        <Card title="执行历史" style={{ width: 540, flex: "0 0 540px" }}>
+          <AdhocHistoryPanel pageSize={6} />
         </Card>
       </div>
     </div>
