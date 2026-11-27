@@ -33,6 +33,7 @@ function selectedKey(pathname: string): string {
     "/schedules",
     "/files",
     "/users",
+    "/envars",
     "/channels",
     "/audit",
     "/password",
@@ -57,6 +58,7 @@ const groupOfKey: Record<string, string> = {
   "/schedules/executions": "grp-automation",
   "/adhoc": "grp-automation",
   "/users": "grp-system",
+  "/envars": "grp-system",
   "/channels": "grp-system",
   "/audit": "grp-system",
 };
@@ -99,6 +101,7 @@ export default function AppLayout() {
   ];
   const systemChildren: MenuProps["items"] = [
     { key: "/users", label: <Link to="/users">用户</Link> },
+    { key: "/envars", label: <Link to="/envars">环境变量</Link> },
     { key: "/channels", label: <Link to="/channels">通知渠道</Link> },
     { key: "/audit", label: <Link to="/audit">审计日志</Link> },
   ];

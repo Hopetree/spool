@@ -5,6 +5,7 @@ import Adhoc from "./pages/Adhoc";
 import Audit from "./pages/Audit";
 import Channels from "./pages/Channels";
 import Credentials from "./pages/Credentials";
+import EnVars from "./pages/EnVars";
 import ExecutionDetail from "./pages/ExecutionDetail";
 import Files from "./pages/Files";
 import FlowDetail from "./pages/FlowDetail";
@@ -59,6 +60,7 @@ export default function App() {
           <Route path="adhoc/history" element={<Navigate to="/adhoc" replace />} />
           <Route path="channels" element={<Channels />} />
           <Route path="files" element={<Files />} />
+          <Route path="envars" element={<EnVars />} />
           <Route path="users" element={<Users />} />
           <Route path="audit" element={<Audit />} />
           <Route path="password" element={<Password />} />

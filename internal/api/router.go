@@ -10,6 +10,7 @@ import (
 	"github.com/Hopetree/spool/internal/auth"
 	"github.com/Hopetree/spool/internal/config"
 	"github.com/Hopetree/spool/internal/credential"
+	"github.com/Hopetree/spool/internal/envars"
 	"github.com/Hopetree/spool/internal/exec"
 	"github.com/Hopetree/spool/internal/flow"
 	"github.com/Hopetree/spool/internal/host"
@@ -27,6 +28,7 @@ type Deps struct {
 	Auth        *auth.Service
 	Audit       *audit.Service
 	Credentials *credential.Service
+	Envars      *envars.Service
 	Hosts       *host.Service
 	Tools       *tool.Service
 	Flows       *flow.Service
@@ -93,6 +95,10 @@ func NewRouter(d Deps) *gin.Engine {
 	admin.PUT("/schedules/:id", updateScheduleHandler(d))
 	admin.DELETE("/schedules/:id", deleteScheduleHandler(d))
 	admin.POST("/schedules/:id/enabled", setScheduleEnabledHandler(d))
+	admin.GET("/envars", listEnvarsHandler(d))
+	admin.POST("/envars", createEnvarHandler(d))
+	admin.PUT("/envars/:id", updateEnvarHandler(d))
+	admin.DELETE("/envars/:id", deleteEnvarHandler(d))
 	admin.GET("/notify-channels", listChannelsHandler(d))
 	admin.POST("/notify-channels", createChannelHandler(d))
 	admin.PUT("/notify-channels/:id", updateChannelHandler(d))

@@ -57,6 +57,9 @@ const actionLabels: Record<string, string> = {
   "transfer.upload": "文件分发",
   "transfer.download": "文件下载",
   "transfer.cancel": "取消传输",
+  "envar.create": "新建环境变量",
+  "envar.update": "编辑环境变量",
+  "envar.delete": "删除环境变量",
 };
 
 const actionOptions = Object.entries(actionLabels)
@@ -76,6 +79,7 @@ const resourceLabels: Record<string, string> = {
   notify: "通知渠道",
   user: "用户",
   transfer: "传输",
+  platform_env: "环境变量",
 };
 
 const summaryLabels: Record<string, string> = {

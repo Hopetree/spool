@@ -18,6 +18,7 @@ import (
 	"github.com/Hopetree/spool/internal/auth"
 	"github.com/Hopetree/spool/internal/config"
 	"github.com/Hopetree/spool/internal/credential"
+	"github.com/Hopetree/spool/internal/envars"
 	"github.com/Hopetree/spool/internal/exec"
 	"github.com/Hopetree/spool/internal/flow"
 	"github.com/Hopetree/spool/internal/host"
@@ -86,6 +87,7 @@ func run() error {
 		return fmt.Errorf("master key check failed (was data_dir/master.key replaced or lost?): %w", err)
 	}
 	credSvc := credential.NewService(st.DB, cipher)
+	envSvc := envars.NewService(st.DB, cipher)
 	hostSvc := host.NewService(st.DB, credSvc, sshx.NewProber(), cfg.Security.HostKeyPolicy)
 	toolSvc := tool.NewService(st.DB)
 	flowSvc := flow.NewService(st.DB, toolSvc)
@@ -97,6 +99,7 @@ func run() error {
 		RemoteBaseDir:         cfg.Execution.RemoteBaseDir,
 		LogsDir:               filepath.Join(cfg.DataDir, "logs"),
 	})
+	engine.SetEnvProvider(envSvc.Values)
 	if err := engine.Start(context.Background()); err != nil {
 		return err
 	}
@@ -133,6 +136,7 @@ func run() error {
 		Auth:        authSvc,
 		Audit:       auditSvc,
 		Credentials: credSvc,
+		Envars:      envSvc,
 		Hosts:       hostSvc,
 		Tools:       toolSvc,
 		Flows:       flowSvc,

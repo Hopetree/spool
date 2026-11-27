@@ -16,6 +16,7 @@ import (
 	"github.com/Hopetree/spool/internal/auth"
 	"github.com/Hopetree/spool/internal/config"
 	"github.com/Hopetree/spool/internal/credential"
+	"github.com/Hopetree/spool/internal/envars"
 	"github.com/Hopetree/spool/internal/exec"
 	"github.com/Hopetree/spool/internal/flow"
 	"github.com/Hopetree/spool/internal/host"
@@ -70,6 +71,7 @@ func newTestEnv(t *testing.T) *testEnv {
 		t.Fatalf("cipher: %v", err)
 	}
 	credSvc := credential.NewService(st.DB, cipher)
+	envSvc := envars.NewService(st.DB, cipher)
 	prober := &stubProber{res: sshx.ProbeResult{
 		User: "root", OS: "Linux", Fingerprint: "SHA256:new", KeyType: "ssh-ed25519", SFTP: true,
 	}}
@@ -81,6 +83,7 @@ func newTestEnv(t *testing.T) *testEnv {
 		MaxConcurrentSteps:    2,
 		MaxConcurrentHostRuns: 2,
 	})
+	engine.SetEnvProvider(envSvc.Values)
 	if err := engine.Start(context.Background()); err != nil {
 		t.Fatalf("engine start: %v", err)
 	}
@@ -104,6 +107,7 @@ func newTestEnv(t *testing.T) *testEnv {
 			Auth:        authSvc,
 			Audit:       audit.NewService(st.DB),
 			Credentials: credSvc,
+			Envars:      envSvc,
 			Hosts:       host.NewService(st.DB, credSvc, prober, "tofu"),
 			Tools:       toolSvc,
 			Flows:       flowSvc,

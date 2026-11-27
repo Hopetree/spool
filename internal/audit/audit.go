@@ -140,6 +140,7 @@ func (s *Service) List(ctx context.Context, f Filter) ([]Record, int64, error) {
 			WHEN 'notify_channel' THEN (SELECT name FROM notify_channels WHERE id = a.resource_id)
 			WHEN 'user' THEN (SELECT username FROM users WHERE id = a.resource_id)
 			WHEN 'transfer' THEN (SELECT file_name FROM transfers WHERE id = a.resource_id)
+			WHEN 'platform_env' THEN (SELECT name FROM platform_env_vars WHERE id = a.resource_id)
 		END, '') AS resource_name,
 		a.summary_json, a.ip, a.user_agent
 		FROM audit_logs a WHERE `+cond+` ORDER BY a.ts DESC, a.id DESC LIMIT ? OFFSET ?`, args...)

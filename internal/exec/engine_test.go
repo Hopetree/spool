@@ -424,6 +424,59 @@ func TestHostConnectFailureFailsSteps(t *testing.T) {
 	}
 }
 
+func TestPlatformEnvInjectedWithParameterPriority(t *testing.T) {
+	runner := &fakeRunner{}
+	fx := newEngineFixture(t, Config{}, &fakeRunnerWrapper{r: runner})
+	fx.engine.SetEnvProvider(func(ctx context.Context) (map[string]string, error) {
+		return map[string]string{
+			"PLAIN":  "platform",
+			"SECRET": "platform-secret",
+			"EXTRA":  "extra-value",
+		}, nil
+	})
+	plan := Plan{Kind: "tool", Name: "tool", Stages: []Stage{{Index: 1, Steps: []Step{{
+		Index: 1, Name: "step", Type: "shell", Interpreter: "/bin/bash", Content: "echo",
+		TimeoutSec: 5, Params: map[string]string{"PLAIN": "tool"},
+	}}}}}
+	ex, err := fx.engine.Submit(context.Background(), SubmitRequest{
+		Kind: "tool", Name: "tool", Plan: plan, HostIDs: []string{fx.hostID},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	final := waitTerminal(t, fx.engine, ex.ID)
+	if final.Status != "success" {
+		t.Fatalf("final = %+v", final)
+	}
+	env, ok := runner.uploads["/tmp/spool-env"]
+	_ = ok
+	// The env file path includes the step run ID; find it by suffix.
+	for path, data := range runner.uploads {
+		if strings.HasSuffix(path, "/.spool-env") {
+			env = data
+		}
+	}
+	if env == "" {
+		t.Fatalf("env file missing: %v", runner.uploads)
+	}
+	for _, want := range []string{"PLAIN='tool'", "EXTRA='extra-value'", "SECRET='platform-secret'"} {
+		if !strings.Contains(env, want) {
+			t.Fatalf("env missing %q:\n%s", want, env)
+		}
+	}
+
+	var planJSON string
+	if err := fx.store.DB.Get(&planJSON, `SELECT plan_json FROM executions WHERE id=?`, ex.ID); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(planJSON, "platform-secret") || strings.Contains(planJSON, "extra-value") {
+		t.Fatalf("plan leaked platform values: %s", planJSON)
+	}
+	if !strings.Contains(planJSON, "platform_env.SECRET") {
+		t.Fatalf("plan missing env refs: %s", planJSON)
+	}
+}
+
 func TestSensitiveParamsInjectedOnlyWhenReferenced(t *testing.T) {
 	runner := &fakeRunner{}
 	fx := newEngineFixture(t, Config{}, &fakeRunnerWrapper{r: runner})

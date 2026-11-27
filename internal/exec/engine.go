@@ -166,11 +166,19 @@ type Engine struct {
 	hostCancels map[string]context.CancelFunc
 
 	onFinish func(execID string)
+
+	envProvider func(ctx context.Context) (map[string]string, error)
 }
 
 // SetOnFinish registers a callback invoked after an execution reaches a
 // terminal state. Call before submitting work.
 func (e *Engine) SetOnFinish(fn func(execID string)) { e.onFinish = fn }
+
+// SetEnvProvider registers the platform environment variable source used to
+// inject values into tool and flow steps at submit time.
+func (e *Engine) SetEnvProvider(fn func(ctx context.Context) (map[string]string, error)) {
+	e.envProvider = fn
+}
 
 // New builds an Engine.
 func New(db *sqlx.DB, creds *credential.Service, factory RunnerFactory, cfg Config) *Engine {
@@ -466,6 +474,18 @@ func (e *Engine) Submit(ctx context.Context, req SubmitRequest) (*Execution, err
 	}
 
 	execID := store.NewULID()
+	if req.Sensitive == nil {
+		req.Sensitive = map[string]string{}
+	}
+	if req.Kind != "adhoc" && e.envProvider != nil {
+		values, err := e.envProvider(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("load platform env: %w", err)
+		}
+		if len(values) > 0 {
+			applyPlatformEnv(&req.Plan, values, req.Sensitive)
+		}
+	}
 	var sensitiveEnc []byte
 	if len(req.Sensitive) > 0 {
 		b, err := json.Marshal(req.Sensitive)
@@ -873,6 +893,54 @@ func (e *Engine) failQueuedSteps(log *EventLog, steps []*StepRun, reason, msg st
 	for _, sr := range steps {
 		if sr.Status == "queued" {
 			e.finishStep(log, sr, "failed", reason, nil, msg, 0, 0, false, 0)
+		}
+	}
+}
+
+// applyPlatformEnv adds platform environment variables to plan steps. Values
+// travel through the execution's encrypted sensitive map, so plan JSON never
+// carries them. Declared tool/flow parameters win over platform variables.
+func applyPlatformEnv(plan *Plan, values map[string]string, sensitive map[string]string) {
+	names := make([]string, 0, len(values))
+	for name := range values {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		value := values[name]
+		sourceKey := "platform_env." + name
+		for i := range plan.Stages {
+			for j := range plan.Stages[i].Steps {
+				step := &plan.Stages[i].Steps[j]
+				if _, ok := step.Params[name]; ok {
+					continue
+				}
+				if _, ok := step.SensitiveParams[name]; ok {
+					continue
+				}
+				if step.SensitiveParams == nil {
+					step.SensitiveParams = map[string]string{}
+				}
+				step.SensitiveParams[name] = sourceKey
+			}
+		}
+		if plan.Graph != nil {
+			for i := range plan.Graph.Nodes {
+				node := &plan.Graph.Nodes[i]
+				if _, ok := node.Params[name]; ok {
+					continue
+				}
+				if _, ok := node.SensitiveParams[name]; ok {
+					continue
+				}
+				if node.SensitiveParams == nil {
+					node.SensitiveParams = map[string]string{}
+				}
+				node.SensitiveParams[name] = sourceKey
+			}
+		}
+		if sensitive != nil {
+			sensitive[sourceKey] = value
 		}
 	}
 }

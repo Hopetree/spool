@@ -21,6 +21,7 @@ const sectionCrumbs: Record<string, Crumb[]> = {
   "/adhoc": [{ title: "自动化", to: "/schedules" }, { title: "临时命令" }],
   "/files": [{ title: "首页", to: "/" }, { title: "文件分发" }],
   "/users": [{ title: "系统管理", to: "/users" }, { title: "用户" }],
+  "/envars": [{ title: "系统管理", to: "/users" }, { title: "环境变量" }],
   "/channels": [{ title: "系统管理", to: "/users" }, { title: "通知渠道" }],
   "/audit": [{ title: "系统管理", to: "/users" }, { title: "审计日志" }],
   "/password": [{ title: "系统管理", to: "/users" }, { title: "修改密码" }],
