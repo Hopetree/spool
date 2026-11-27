@@ -1,6 +1,6 @@
 import CodeMirror from "@uiw/react-codemirror";
 import { python } from "@codemirror/lang-python";
-import { StreamLanguage } from "@codemirror/language";
+import { StreamLanguage, indentUnit } from "@codemirror/language";
 import { shell } from "@codemirror/legacy-modes/mode/shell";
 import type { ToolType } from "../api/tools";
 
@@ -13,12 +13,13 @@ interface Props {
 }
 
 export default function CodeEditor({ language, value, onChange, readOnly, height = "320px" }: Props) {
-  const extensions = language === "python" ? [python()] : [StreamLanguage.define(shell)];
+  const extensions = [language === "python" ? python() : StreamLanguage.define(shell), indentUnit.of("    ")];
   return (
-    <div style={{ border: "1px solid #d9d9d9", borderRadius: 6, overflow: "hidden" }}>
+    <div style={{ border: "1px solid #1f2329", borderRadius: 6, overflow: "hidden" }}>
       <CodeMirror
         value={value ?? ""}
         height={height}
+        theme="dark"
         extensions={extensions}
         onChange={(v) => onChange?.(v)}
         editable={!readOnly}
