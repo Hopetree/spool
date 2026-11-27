@@ -3,12 +3,9 @@ import type { FlowMapping } from "../api/flows";
 import type { ToolParam, ToolSummary } from "../api/tools";
 import {
   compatibleUpstreamParams,
-  deriveInputs,
   inputConflicts,
-  resolveBinding,
   topologicalOrder,
   type CompatibleParam,
-  type FlowInputSummary,
   type ParamEdge,
   type ParamFlowNode,
 } from "../utils/flowParams";
@@ -51,7 +48,6 @@ function defaultLiteral(param: ToolParam): string {
 
 export default function FlowParamEditor({ nodes, edges, tools, onChange, onOpenNode }: Props) {
   const toolsByID = new Map(tools.map((tool) => [tool.id, tool]));
-  const inputs = deriveInputs(nodes, edges, toolsByID);
   const conflicts = inputConflicts(nodes, toolsByID);
   const nodeByID = new Map(nodes.map((node) => [node.id, node]));
   const toolNodes = topologicalOrder(nodes, edges).filter((node) => node.kind === "tool");
@@ -87,22 +83,6 @@ export default function FlowParamEditor({ nodes, edges, tools, onChange, onOpenN
           }
         />
       )}
-      <Card size="small" title="流程输入">
-        {inputs.length === 0 ? (
-          <Typography.Text type="secondary">当前没有执行时输入；固定值、默认值和引用上游参数不会要求执行时填写。</Typography.Text>
-        ) : (
-          <Space wrap>
-            {inputs.map((input) => (
-              <Tag key={input.name} color={input.sensitive ? "red" : "blue"}>
-                {input.name} · {input.label}（{input.type}
-                {input.required ? "，必填" : ""}
-                {input.sensitive ? "，敏感" : ""}）
-              </Tag>
-            ))}
-          </Space>
-        )}
-      </Card>
-
       {toolNodes.map((node) => {
         const tool = toolsByID.get(node.toolID);
         const params = tool?.params ?? [];
@@ -202,10 +182,8 @@ export default function FlowParamEditor({ nodes, edges, tools, onChange, onOpenN
                       <ParamValueEditor
                         param={param}
                         mapping={node.mapping[param.name]}
-                        inputs={inputs}
                         compatible={compatibleUpstreamParams(node.id, param, nodes, edges, toolsByID)}
                         onChange={(mapping) => updateMapping(node.id, param.name, mapping)}
-                        resolve={() => resolveBinding(node.id, param.name, nodes, edges, toolsByID)}
                       />
                     ),
                   },
@@ -222,25 +200,20 @@ export default function FlowParamEditor({ nodes, edges, tools, onChange, onOpenN
 function ParamValueEditor({
   param,
   mapping,
-  inputs,
   compatible,
   onChange,
-  resolve,
 }: {
   param: ToolParam;
   mapping: FlowMapping | undefined;
-  inputs: FlowInputSummary[];
   compatible: CompatibleParam[];
   onChange: (mapping?: FlowMapping) => void;
-  resolve: () => ReturnType<typeof resolveBinding>;
 }) {
   const source = sourceOf(mapping);
   if (source === "default") {
-    return (
-      <Typography.Text type={param.required && !param.default ? "danger" : "secondary"}>
-        {param.default ? `默认值：${param.default}` : param.required ? "必填参数，必须配置来源" : "无默认值"}
-      </Typography.Text>
-    );
+    if (param.required && !param.default) {
+      return <Typography.Text type="danger">必填参数未配置来源</Typography.Text>;
+    }
+    return <Typography.Text type="secondary">{param.default || "—"}</Typography.Text>;
   }
 
   if (mapping?.source === "literal") {
@@ -281,46 +254,32 @@ function ParamValueEditor({
             onChange={(e) => onChange({ source: "literal", value: e.target.value })}
           />
         )}
-        <ResolveHint resolve={resolve} />
       </Space>
     );
   }
 
   if (mapping?.source === "input") {
-    const existing = inputs.find((input) => input.name === mapping.input_name);
     return (
-      <Space direction="vertical" size={4} style={{ width: "100%" }}>
-        <Space wrap>
-          <Input
-            size="small"
-            value={mapping.input_name ?? ""}
-            style={{ width: 170 }}
-            placeholder="输入名（流程内唯一）"
-            onChange={(e) => onChange({ ...mapping, input_name: e.target.value })}
-          />
-          <Input
-            size="small"
-            value={mapping.input_label ?? ""}
-            style={{ width: 180 }}
-            placeholder="显示标题"
-            onChange={(e) => onChange({ ...mapping, input_label: e.target.value })}
-          />
-        </Space>
-        <Space size={4} wrap>
-          <Tag>{param.type}</Tag>
-          {(existing?.required || param.required) && <Tag color="orange">必填</Tag>}
-          {(existing?.sensitive || param.sensitive) && <Tag color="red">敏感</Tag>}
-          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-            执行时只询问一次
-          </Typography.Text>
-        </Space>
-        <ResolveHint resolve={resolve} />
+      <Space wrap>
+        <Input
+          size="small"
+          value={mapping.input_name ?? ""}
+          style={{ width: 170 }}
+          placeholder="输入名"
+          onChange={(e) => onChange({ ...mapping, input_name: e.target.value })}
+        />
+        <Input
+          size="small"
+          value={mapping.input_label ?? ""}
+          style={{ width: 180 }}
+          placeholder="显示标题"
+          onChange={(e) => onChange({ ...mapping, input_label: e.target.value })}
+        />
       </Space>
     );
   }
 
   if (mapping?.source === "node") {
-    const selectedNodeName = compatible.find((item) => item.nodeID === mapping.ref_node_id)?.nodeName;
     const nodeOptions = Array.from(new Set(compatible.map((item) => item.nodeID))).map((id) => {
       const item = compatible.find((candidate) => candidate.nodeID === id)!;
       return { value: id, label: item.nodeName };
@@ -353,39 +312,10 @@ function ParamValueEditor({
               onChange({ source: "node", ref_node_id: mapping.ref_node_id, ref_param: paramName })
             }
           />
-          {selectedNodeName && <Tag>{selectedNodeName}</Tag>}
         </Space>
-        <ResolveHint resolve={resolve} />
       </Space>
     );
   }
 
   return null;
-}
-
-function ResolveHint({ resolve }: { resolve: () => ReturnType<typeof resolveBinding> }) {
-  const resolved = resolve();
-  if (resolved.error) {
-    return <Typography.Text type="danger" style={{ fontSize: 12 }}>{resolved.error}</Typography.Text>;
-  }
-  if (resolved.kind === "input") {
-    return (
-      <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-        当前解析为执行输入 {resolved.inputName}
-        {resolved.inputLabel ? `（${resolved.inputLabel}）` : ""}
-      </Typography.Text>
-    );
-  }
-  if (resolved.kind === "literal") {
-    return (
-      <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-        当前解析为固定值 {resolved.value || "空"}
-      </Typography.Text>
-    );
-  }
-  return (
-    <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-      当前解析为默认值 {resolved.value || "空"}
-    </Typography.Text>
-  );
 }

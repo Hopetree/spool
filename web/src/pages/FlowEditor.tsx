@@ -474,12 +474,6 @@ export default function FlowEditor() {
 
         {step === 2 && (
           <Card title="参数设置" style={{ marginBottom: 16 }}>
-            <Alert
-              type="info"
-              showIcon
-              message="每个工具参数单独选择来源：工具默认值、固定值、执行时输入，或引用上游节点的参数。执行时输入会自动汇总，同名输入只询问一次。"
-              style={{ marginBottom: 12 }}
-            />
             <FlowParamEditor
               nodes={nodes.map((node) => ({
                 id: node.id,
@@ -601,9 +595,7 @@ export default function FlowEditor() {
             </Space>
             <div>
               <Typography.Text strong>参数配置</Typography.Text>
-              <div style={{ fontSize: 12, color: "#8c8c8c", marginTop: 4 }}>
-                参数来源与引用已移至第三步“参数设置”，此处只保留主机、超时和重试配置。
-              </div>
+              <div style={{ fontSize: 12, color: "#8c8c8c", marginTop: 4 }}>参数在第三步配置</div>
             </div>
             <Button danger onClick={() => removeNode(selectedNode.id)}>
               删除节点
