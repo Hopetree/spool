@@ -127,8 +127,13 @@ export default function ExecutionDetail() {
       message.error("复制失败");
     }
   };
+  const toolDetailPath = data?.kind === "tool" && data.ref_id ? `/tools/${data.ref_id}` : "";
   const backPath =
-    data?.kind === "flow" ? "/flows/executions" : data?.kind === "adhoc" ? "/adhoc" : "/tools/executions";
+    data?.kind === "flow"
+      ? "/flows/executions"
+      : data?.kind === "adhoc"
+        ? "/adhoc"
+        : toolDetailPath || "/tools/executions";
 
   const graph = data?.graph;
   // Old plan snapshots do not carry tool names; resolve them for display.
@@ -192,16 +197,24 @@ export default function ExecutionDetail() {
   return (
     <div>
       <PageHeader
-        back={{ label: "返回列表", onClick: () => navigate(backPath) }}
+        back={{ label: toolDetailPath ? "返回工具" : "返回列表", onClick: () => navigate(backPath) }}
         title={data?.name || "执行详情"}
         subtitle={data ? <ExecutionStatusTag status={data.status} /> : undefined}
-        crumbs={[
-          {
-            title: data?.kind === "flow" ? "流程执行历史" : data?.kind === "adhoc" ? "临时命令" : "工具执行历史",
-            to: backPath,
-          },
-          { title: "执行详情" },
-        ]}
+        crumbs={
+          toolDetailPath
+            ? [
+                { title: "工具", to: "/tools" },
+                { title: data?.name || "工具详情", to: toolDetailPath },
+                { title: "执行详情" },
+              ]
+            : [
+                {
+                  title: data?.kind === "flow" ? "流程执行历史" : data?.kind === "adhoc" ? "临时命令" : "工具执行历史",
+                  to: backPath,
+                },
+                { title: "执行详情" },
+              ]
+        }
         extra={
           <>
             {active && (
