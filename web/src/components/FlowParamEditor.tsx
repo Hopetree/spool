@@ -1,9 +1,10 @@
-import { Alert, AutoComplete, Button, Card, Empty, Input, InputNumber, Select, Space, Table, Tag, Typography } from "antd";
+import { Alert, Button, Card, Empty, Input, InputNumber, Select, Space, Table, Tag, Typography } from "antd";
 import type { FlowMapping } from "../api/flows";
 import type { ToolParam, ToolSummary } from "../api/tools";
 import {
   compatibleUpstreamParams,
   deriveInputs,
+  inputConflicts,
   resolveBinding,
   topologicalOrder,
   type CompatibleParam,
@@ -51,7 +52,7 @@ function defaultLiteral(param: ToolParam): string {
 export default function FlowParamEditor({ nodes, edges, tools, onChange, onOpenNode }: Props) {
   const toolsByID = new Map(tools.map((tool) => [tool.id, tool]));
   const inputs = deriveInputs(nodes, edges, toolsByID);
-  const inputByName = new Map(inputs.map((input) => [input.name, input]));
+  const conflicts = inputConflicts(nodes, toolsByID);
   const nodeByID = new Map(nodes.map((node) => [node.id, node]));
   const toolNodes = topologicalOrder(nodes, edges).filter((node) => node.kind === "tool");
 
@@ -70,6 +71,22 @@ export default function FlowParamEditor({ nodes, edges, tools, onChange, onOpenN
 
   return (
     <Space direction="vertical" size={12} style={{ width: "100%" }}>
+      {conflicts.length > 0 && (
+        <Alert
+          type="error"
+          showIcon
+          message="参数设置存在冲突"
+          description={
+            <Space direction="vertical" size={2}>
+              {conflicts.map((conflict, index) => (
+                <Typography.Text key={`${conflict.kind}-${conflict.value}-${index}`} type="danger">
+                  {conflict.message}
+                </Typography.Text>
+              ))}
+            </Space>
+          }
+        />
+      )}
       <Card size="small" title="流程输入">
         {inputs.length === 0 ? (
           <Typography.Text type="secondary">当前没有执行时输入；固定值、默认值和引用上游参数不会要求执行时填写。</Typography.Text>
@@ -154,11 +171,10 @@ export default function FlowParamEditor({ nodes, edges, tools, onChange, onOpenN
                               return;
                             }
                             if (next === "input") {
-                              const existing = inputByName.get(param.name);
                               updateMapping(node.id, param.name, {
                                 source: "input",
                                 input_name: param.name,
-                                input_label: existing?.label || param.label || param.name,
+                                input_label: param.label || param.name,
                               });
                               return;
                             }
@@ -275,24 +291,12 @@ function ParamValueEditor({
     return (
       <Space direction="vertical" size={4} style={{ width: "100%" }}>
         <Space wrap>
-          <AutoComplete
+          <Input
             size="small"
             value={mapping.input_name ?? ""}
             style={{ width: 170 }}
-            placeholder="输入名"
-            options={inputs.map((input) => ({
-              value: input.name,
-              label: `${input.name} · ${input.label}`,
-            }))}
-            onChange={(value) => {
-              const matched = inputs.find((input) => input.name === value);
-              onChange({
-                source: "input",
-                input_name: value,
-                input_label: matched?.label || mapping.input_label || "",
-              });
-            }}
-            filterOption={(input, option) => String(option?.value ?? "").includes(input)}
+            placeholder="输入名（流程内唯一）"
+            onChange={(e) => onChange({ ...mapping, input_name: e.target.value })}
           />
           <Input
             size="small"

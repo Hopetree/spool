@@ -2,6 +2,7 @@ package flow
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/Hopetree/spool/internal/tool"
@@ -220,34 +221,31 @@ func TestSensitiveAndRequiredPropagation(t *testing.T) {
 	}
 }
 
-func TestSameNamedInputsAreShared(t *testing.T) {
+func TestDuplicateInputNamesAndLabelsRejected(t *testing.T) {
 	svc, tools, _ := newFlowFixture(t)
 	ctx := context.Background()
 	a := createTool(t, tools, "a", []tool.Param{{Name: "x", Type: "string"}})
 	b := createTool(t, tools, "b", []tool.Param{{Name: "y", Type: "string"}})
 	in := paramFlowInput(a.ID, b.ID,
 		map[string]Mapping{"x": {Source: "input", InputName: "shared", InputLabel: "共享值"}},
-		map[string]Mapping{"y": {Source: "input", InputName: "shared"}},
+		map[string]Mapping{"y": {Source: "input", InputName: "shared", InputLabel: "另一个标题"}},
 	)
-	in.Name = "shared-input"
-	created, err := svc.Create(ctx, in, "admin")
-	if err != nil {
-		t.Fatalf("create: %v", err)
+	in.Name = "duplicate-input-name"
+	if _, err := svc.Create(ctx, in, "admin"); err == nil {
+		t.Fatal("expected duplicate input name to fail")
+	} else if !strings.Contains(err.Error(), "输入名") || !strings.Contains(err.Error(), "重复") {
+		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(created.Params) != 1 || created.Params[0].Name != "shared" || created.Params[0].Label != "共享值" {
-		t.Fatalf("params = %+v", created.Params)
-	}
-	res, err := svc.Compile(ctx, created.ID, map[string]string{"shared": "v"})
-	if err != nil {
-		t.Fatalf("compile: %v", err)
-	}
-	for _, node := range res.Plan.Graph.Nodes {
-		if node.Type != NodeTool {
-			continue
-		}
-		if node.Params["x"] != "v" && node.Params["y"] != "v" {
-			t.Fatalf("node %s params = %+v", node.Name, node.Params)
-		}
+
+	in = paramFlowInput(a.ID, b.ID,
+		map[string]Mapping{"x": {Source: "input", InputName: "first", InputLabel: "同名标题"}},
+		map[string]Mapping{"y": {Source: "input", InputName: "second", InputLabel: "同名标题"}},
+	)
+	in.Name = "duplicate-input-label"
+	if _, err := svc.Create(ctx, in, "admin"); err == nil {
+		t.Fatal("expected duplicate input label to fail")
+	} else if !strings.Contains(err.Error(), "显示标题") || !strings.Contains(err.Error(), "重复") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
 
@@ -342,5 +340,39 @@ func TestLegacySensitiveFlowParameterKeepsSensitivity(t *testing.T) {
 	key := node.SensitiveParams["TOKEN"]
 	if key == "" || res.Sensitive[key] != "s3cr3t" {
 		t.Fatalf("node sensitive params = %+v", node.SensitiveParams)
+	}
+}
+
+func TestCompileToleratesLegacySharedInputNames(t *testing.T) {
+	svc, tools, _ := newFlowFixture(t)
+	_ = svc
+	a := createTool(t, tools, "a", []tool.Param{{Name: "x", Type: "string"}})
+	b := createTool(t, tools, "b", []tool.Param{{Name: "y", Type: "string"}})
+	nodes := []NodeInput{
+		{ID: "start", Type: NodeStart, Name: "开始"},
+		{ID: "a", Type: NodeTool, Name: "A", ToolID: a.ID, Mapping: map[string]Mapping{
+			"x": {Source: "input", InputName: "shared", InputLabel: "共享值"},
+		}},
+		{ID: "b", Type: NodeTool, Name: "B", ToolID: b.ID, Mapping: map[string]Mapping{
+			"y": {Source: "input", InputName: "shared", InputLabel: "共享值"},
+		}},
+	}
+	edges := []EdgeInput{
+		{From: "start", To: "a", Condition: CondAlways},
+		{From: "a", To: "b", Condition: CondAlways},
+	}
+	resolver, err := newParamResolver(nodes, edges, map[string]*tool.Detail{"a": a, "b": b})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := deriveInputs(resolver, true); err == nil {
+		t.Fatal("expected save-time uniqueness check to fail")
+	}
+	inputs, err := deriveInputs(resolver, false)
+	if err != nil {
+		t.Fatalf("compile-time derivation: %v", err)
+	}
+	if len(inputs) != 1 || inputs[0].Name != "shared" {
+		t.Fatalf("inputs = %+v", inputs)
 	}
 }

@@ -53,6 +53,7 @@ import {
   type FlowRFNode,
 } from "../components/FlowGraphParts";
 import FlowParamEditor from "../components/FlowParamEditor";
+import { inputConflicts } from "../utils/flowParams";
 import PageHeader from "../components/PageHeader";
 import { useAuthStore } from "../stores/auth";
 
@@ -316,6 +317,19 @@ export default function FlowEditor() {
   });
 
   const submit = (values: FormValues) => {
+    const paramNodes = nodes.map((node) => ({
+      id: node.id,
+      kind: node.data.kind,
+      name: node.data.name,
+      toolID: node.data.kind === "start" ? "" : node.data.toolID,
+      mapping: node.data.kind === "start" ? {} : node.data.mapping,
+    }));
+    const conflicts = inputConflicts(paramNodes, new Map(tools.map((tool) => [tool.id, tool])));
+    if (conflicts.length > 0) {
+      message.error(conflicts[0].message);
+      setStep(2);
+      return;
+    }
     const noTool = nodes.find((n) => n.data.kind === "tool" && !n.data.toolID);
     if (noTool) {
       message.warning(`节点「${noTool.data.name || "未命名节点"}」还未选择工具`);

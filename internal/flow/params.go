@@ -213,8 +213,9 @@ func optionsCover(current, target []string) bool {
 }
 
 // deriveInputs walks every node parameter, resolves references and returns the
-// execution inputs derived from source=input bindings.
-func deriveInputs(r *paramResolver) ([]tool.Param, error) {
+// execution inputs derived from source=input bindings. When enforceUnique is
+// set, every source=input binding must use a distinct input name and label.
+func deriveInputs(r *paramResolver, enforceUnique bool) ([]tool.Param, error) {
 	type inputAccumulator struct {
 		name         string
 		params       []tool.Param
@@ -226,6 +227,8 @@ func deriveInputs(r *paramResolver) ([]tool.Param, error) {
 	}
 	accs := map[string]*inputAccumulator{}
 	order := []string{}
+	declaredNames := map[string]string{}
+	declaredLabels := map[string]string{}
 	for _, nodeID := range r.order {
 		if r.nodes[nodeID].Type != NodeTool {
 			continue
@@ -237,6 +240,26 @@ func deriveInputs(r *paramResolver) ([]tool.Param, error) {
 			}
 			if res.Kind != "input" {
 				continue
+			}
+			if mapping, ok := r.nodes[nodeID].Mapping[p.Name]; ok && mapping.Source == "input" {
+				label := firstNonEmpty(res.InputLabel, res.RootParam.Label, res.InputName)
+				owner := fmt.Sprintf("节点 %q 的参数 %q", r.nodes[nodeID].Name, p.Name)
+				if enforceUnique {
+					if prev, exists := declaredNames[res.InputName]; exists {
+						return nil, invalid(fmt.Sprintf(
+							"流程输入名 %q 重复：%s 与 %s 冲突", res.InputName, prev, owner))
+					}
+					if prev, exists := declaredLabels[label]; exists {
+						return nil, invalid(fmt.Sprintf(
+							"流程输入显示标题 %q 重复：%s 与 %s 冲突", label, prev, owner))
+					}
+				}
+				if _, exists := declaredNames[res.InputName]; !exists {
+					declaredNames[res.InputName] = owner
+				}
+				if _, exists := declaredLabels[label]; !exists {
+					declaredLabels[label] = owner
+				}
 			}
 			acc := accs[res.InputName]
 			if acc == nil {

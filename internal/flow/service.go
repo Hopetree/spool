@@ -231,7 +231,7 @@ func validateAndDeriveParams(in *Input, toolsByNode map[string]*tool.Detail) err
 	if err != nil {
 		return err
 	}
-	inputs, err := deriveInputs(resolver)
+	inputs, err := deriveInputs(resolver, true)
 	if err != nil {
 		return err
 	}
@@ -473,7 +473,7 @@ func (s *Service) Compile(ctx context.Context, id string, values map[string]stri
 	if err != nil {
 		return nil, err
 	}
-	inputs, err := deriveInputs(resolver)
+	inputs, err := deriveInputs(resolver, false)
 	if err != nil {
 		return nil, err
 	}

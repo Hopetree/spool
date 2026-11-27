@@ -4,6 +4,7 @@ import {
   ancestorIDs,
   compatibleUpstreamParams,
   deriveInputs,
+  inputConflicts,
   resolveBinding,
   topologicalOrder,
   type ParamEdge,
@@ -99,6 +100,30 @@ describe("flow parameter helpers", () => {
     const compatible = compatibleUpstreamParams("b", mode, nodes, edges, tools);
     expect(compatible.map((item) => item.param.name)).toEqual(["mode"]);
     expect(compatible[0].nodeName).toBe("A");
+  });
+
+  it("detects duplicate execution input names and labels", () => {
+    expect(inputConflicts(nodes, tools)).toEqual([]);
+
+    const duplicatedName = JSON.parse(JSON.stringify(nodes)) as ParamFlowNode[];
+    duplicatedName[2].mapping.pkg_path = {
+      source: "input",
+      input_name: "pkg_path",
+      input_label: "另一个包路径",
+    };
+    const nameConflicts = inputConflicts(duplicatedName, tools);
+    expect(nameConflicts).toHaveLength(1);
+    expect(nameConflicts[0]).toMatchObject({ kind: "name", value: "pkg_path" });
+
+    const duplicatedLabel = JSON.parse(JSON.stringify(nodes)) as ParamFlowNode[];
+    duplicatedLabel[2].mapping.pkg_path = {
+      source: "input",
+      input_name: "other_path",
+      input_label: "巡检包路径",
+    };
+    const labelConflicts = inputConflicts(duplicatedLabel, tools);
+    expect(labelConflicts).toHaveLength(1);
+    expect(labelConflicts[0]).toMatchObject({ kind: "label", value: "巡检包路径" });
   });
 
   it("rejects sibling references", () => {

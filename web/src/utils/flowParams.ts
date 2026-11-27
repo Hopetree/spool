@@ -297,7 +297,8 @@ export function deriveInputs(
 }
 
 function firstNonEmpty(...values: string[]): string {
-  return values.find((value) => value.trim() !== "") ?? "";
+  const found = values.find((value) => value.trim() !== "");
+  return found ? found.trim() : "";
 }
 
 function intersectOptions(type: ParamType, params: ToolParam[]): string[] {
@@ -308,6 +309,54 @@ function intersectOptions(type: ParamType, params: ToolParam[]): string[] {
     allowed = new Set([...allowed].filter((option) => next.has(option)));
   }
   return (params[0].options ?? []).filter((option) => allowed.has(option));
+}
+
+
+export interface InputConflict {
+  kind: "name" | "label";
+  value: string;
+  message: string;
+}
+
+/** Returns conflicts between explicit execution inputs. Inputs created by
+ *  downstream node references are not declarations and do not count. */
+export function inputConflicts(nodes: ParamFlowNode[], tools: Map<string, ToolSummary>): InputConflict[] {
+  const byName = new Map<string, string>();
+  const byLabel = new Map<string, string>();
+  const conflicts: InputConflict[] = [];
+  for (const node of nodes) {
+    if (node.kind !== "tool") continue;
+    const tool = tools.get(node.toolID);
+    for (const param of toolParams(tool)) {
+      const mapping = node.mapping[param.name];
+      if (mapping?.source !== "input") continue;
+      const name = (mapping.input_name ?? "").trim();
+      if (!name) continue;
+      const label = firstNonEmpty(mapping.input_label ?? "", param.label, name);
+      const owner = `${node.name || node.id} / ${param.name}`;
+      const previousName = byName.get(name);
+      if (previousName) {
+        conflicts.push({
+          kind: "name",
+          value: name,
+          message: `输入名 "${name}" 重复：${previousName} 与 ${owner} 冲突`,
+        });
+      } else {
+        byName.set(name, owner);
+      }
+      const previousLabel = byLabel.get(label);
+      if (previousLabel) {
+        conflicts.push({
+          kind: "label",
+          value: label,
+          message: `显示标题 "${label}" 重复：${previousLabel} 与 ${owner} 冲突`,
+        });
+      } else {
+        byLabel.set(label, owner);
+      }
+    }
+  }
+  return conflicts;
 }
 
 export function compatibleUpstreamParams(
