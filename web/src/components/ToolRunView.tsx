@@ -8,11 +8,9 @@ import {
   Input,
   Modal,
   Popconfirm,
-  Popover,
   Space,
   Table,
   Tag,
-  Typography,
 } from "antd";
 import { SearchOutlined } from "@ant-design/icons";
 import { useQuery } from "@tanstack/react-query";
@@ -136,41 +134,13 @@ export function ToolRunInfo({
               label: "执行参数",
               children:
                 Object.keys(params).length > 0 ? (
-                  <Popover
-                    trigger="click"
-                    open={paramsOpen}
-                    onOpenChange={setParamsOpen}
-                    placement="left"
-                    styles={{ body: { padding: 12 } }}
-                    content={
-                      <div
-                        style={{
-                          maxWidth: 460,
-                          maxHeight: 320,
-                          overflowY: "auto",
-                          display: "flex",
-                          flexDirection: "column",
-                          gap: 6,
-                        }}
-                      >
-                        {Object.entries(params).map(([key, value]) => (
-                          <div key={key} style={{ fontSize: 12, wordBreak: "break-all" }}>
-                            <Typography.Text strong>{key}</Typography.Text>
-                            <div style={{ color: "#595959" }}>{value || "（空）"}</div>
-                          </div>
-                        ))}
-                      </div>
-                    }
-                  >
-                    <Button type="link" size="small" style={{ padding: 0 }} onClick={() => setParamsOpen(true)}>
-                      查看
-                    </Button>
-                  </Popover>
+                  <Button type="link" size="small" style={{ padding: 0 }} onClick={() => setParamsOpen(true)}>
+                    查看
+                  </Button>
                 ) : (
                   "—"
                 ),
-            },
-            { key: "summary", label: "摘要", children: summary || "—", span: 3 },
+            },            { key: "summary", label: "摘要", children: summary || "—", span: 3 },
           ]}
         />
       </Card>
@@ -224,6 +194,30 @@ export function ToolRunInfo({
             { title: "状态", width: 100, render: (_, host) => <ExecutionStatusTag status={host.status} /> },
             { title: "耗时", width: 90, render: (_, host) => duration(host.startedAt, host.finishedAt) },
             { title: "错误", dataIndex: "errorMessage", ellipsis: true },
+          ]}
+        />
+      </Modal>
+
+      <Modal
+        open={paramsOpen}
+        onCancel={() => setParamsOpen(false)}
+        title={`执行参数（${Object.keys(params).length} 个）`}
+        footer={null}
+        width={720}
+      >
+        <Table<{ name: string; value: string }>
+          rowKey="name"
+          size="small"
+          pagination={false}
+          scroll={{ y: 420 }}
+          dataSource={Object.entries(params).map(([name, value]) => ({ name, value }))}
+          columns={[
+            { title: "参数名", dataIndex: "name", width: 180, ellipsis: true },
+            {
+              title: "值",
+              dataIndex: "value",
+              render: (value: string) => value || "（空）",
+            },
           ]}
         />
       </Modal>
