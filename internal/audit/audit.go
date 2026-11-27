@@ -36,6 +36,7 @@ type Record struct {
 	ResourceID       string `db:"resource_id" json:"resource_id"`
 	ResourceName     string `db:"resource_name" json:"resource_name"`
 	SummaryJSON      string `db:"summary_json" json:"summary_json"`
+	SummaryDisplay   string `db:"-" json:"summary_display,omitempty"`
 	IP               string `db:"ip" json:"ip"`
 	UserAgent        string `db:"user_agent" json:"user_agent"`
 }
@@ -143,5 +144,139 @@ func (s *Service) List(ctx context.Context, f Filter) ([]Record, int64, error) {
 	if err != nil {
 		return nil, 0, fmt.Errorf("list audit: %w", err)
 	}
+	s.enrichSummaries(ctx, rows)
 	return rows, total, nil
+}
+
+type summaryRef struct {
+	key  string
+	kind string
+	id   string
+}
+
+var summaryRefQueries = map[string]struct {
+	table string
+	name  string
+}{
+	"execution":  {table: "executions", name: "name_snapshot"},
+	"tool":       {table: "tools", name: "name"},
+	"flow":       {table: "flows", name: "name"},
+	"schedule":   {table: "schedules", name: "name"},
+	"host":       {table: "hosts", name: "name"},
+	"host_group": {table: "host_groups", name: "name"},
+}
+
+// summaryRefKind returns the kind of resource referenced by an ID-valued
+// summary field, or "" when the field is not a resolvable reference.
+func summaryRefKind(key string, summary map[string]any, resourceType string) string {
+	switch key {
+	case "execution_id", "source_execution":
+		return "execution"
+	case "host_id":
+		return "host"
+	case "group_id":
+		return "host_group"
+	case "ref_id":
+		switch fmt.Sprint(summary["kind"]) {
+		case "tool":
+			return "tool"
+		case "flow":
+			return "flow"
+		case "schedule":
+			return "schedule"
+		}
+	case "source":
+		switch resourceType {
+		case "tool", "flow", "schedule":
+			return resourceType
+		}
+	}
+	return ""
+}
+
+// enrichSummaries replaces opaque IDs in audit summaries with resource names so
+// the audit page shows readable content. Unresolvable references are dropped
+// rather than exposing IDs, and internal run IDs are hidden entirely.
+func (s *Service) enrichSummaries(ctx context.Context, records []Record) {
+	parsed := make([]map[string]any, len(records))
+	targets := make([][]summaryRef, len(records))
+	needed := map[string]map[string]struct{}{}
+
+	for i := range records {
+		var summary map[string]any
+		if err := json.Unmarshal([]byte(records[i].SummaryJSON), &summary); err != nil || summary == nil {
+			records[i].SummaryDisplay = records[i].SummaryJSON
+			continue
+		}
+		parsed[i] = summary
+		for key, value := range summary {
+			id, ok := value.(string)
+			if !ok || id == "" {
+				continue
+			}
+			kind := summaryRefKind(key, summary, records[i].ResourceType)
+			if kind == "" {
+				continue
+			}
+			if needed[kind] == nil {
+				needed[kind] = map[string]struct{}{}
+			}
+			needed[kind][id] = struct{}{}
+			targets[i] = append(targets[i], summaryRef{key: key, kind: kind, id: id})
+		}
+	}
+
+	names := map[string]map[string]string{}
+	for kind, idSet := range needed {
+		query, ok := summaryRefQueries[kind]
+		if !ok {
+			continue
+		}
+		ids := make([]string, 0, len(idSet))
+		for id := range idSet {
+			ids = append(ids, id)
+		}
+		stmt, args, err := sqlx.In(
+			fmt.Sprintf("SELECT id, %s AS name FROM %s WHERE id IN (?)", query.name, query.table), ids)
+		if err != nil {
+			continue
+		}
+		rows := []struct {
+			ID   string `db:"id"`
+			Name string `db:"name"`
+		}{}
+		if err := s.db.SelectContext(ctx, &rows, s.db.Rebind(stmt), args...); err != nil {
+			continue
+		}
+		names[kind] = make(map[string]string, len(rows))
+		for _, row := range rows {
+			names[kind][row.ID] = row.Name
+		}
+	}
+
+	for i, summary := range parsed {
+		if summary == nil {
+			continue
+		}
+		delete(summary, "host_run")
+		delete(summary, "step_run")
+		for _, ref := range targets[i] {
+			if name := names[ref.kind][ref.id]; name != "" {
+				summary[ref.key] = name
+			} else {
+				delete(summary, ref.key)
+			}
+		}
+		for key, value := range summary {
+			if text, ok := value.(string); ok && text == "" {
+				delete(summary, key)
+			}
+		}
+		encoded, err := json.Marshal(summary)
+		if err != nil {
+			records[i].SummaryDisplay = records[i].SummaryJSON
+			continue
+		}
+		records[i].SummaryDisplay = string(encoded)
+	}
 }

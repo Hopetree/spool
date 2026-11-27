@@ -1,9 +1,10 @@
 import { useState, type CSSProperties } from "react";
-import { Card, Input, Space, Table, Tag, Tooltip, Typography } from "antd";
+import { Card, Select, Space, Table, Tag, Tooltip, Typography } from "antd";
 import { useQuery } from "@tanstack/react-query";
 import PageHeader from "../components/PageHeader";
 import dayjs from "dayjs";
 import { listAudit, type AuditRecord } from "../api/audit";
+import { listUsers } from "../api/users";
 
 const actionLabels: Record<string, string> = {
   login: "登录",
@@ -58,6 +59,10 @@ const actionLabels: Record<string, string> = {
   "transfer.download": "文件下载",
   "transfer.cancel": "取消传输",
 };
+
+const actionOptions = Object.entries(actionLabels)
+  .map(([value, label]) => ({ value, label }))
+  .sort((a, b) => a.label.localeCompare(b.label, "zh-CN"));
 
 const resourceLabels: Record<string, string> = {
   host: "主机",
@@ -151,6 +156,13 @@ const summaryOrder = [
 ];
 const summaryRank = new Map(summaryOrder.map((key, i) => [key, i]));
 
+const opaqueID = /^[0-9A-HJKMNP-TV-Z]{26}$/;
+
+function readableName(value: string): string {
+  const name = value.trim();
+  return opaqueID.test(name) ? "" : name;
+}
+
 function pretty(json: string): string {
   try {
     return JSON.stringify(JSON.parse(json), null, 2);
@@ -168,6 +180,9 @@ function formatBytes(n: number): string {
 function formatSummaryValue(key: string, value: unknown): string {
   if (value === null || value === undefined || value === "") return "—";
   if (typeof value === "boolean") return value ? "是" : "否";
+  if (typeof value === "string" && opaqueID.test(value) && key !== "command" && key !== "path" && key !== "remote_dir") {
+    return "—";
+  }
   if (key === "role") {
     return ({ admin: "管理员", operator: "操作员", viewer: "只读" } as Record<string, string>)[String(value)] ?? String(value);
   }
@@ -239,6 +254,15 @@ export default function Audit() {
   const [actor, setActor] = useState("");
   const [page, setPage] = useState(1);
 
+  const { data: users = [] } = useQuery({
+    queryKey: ["users", "audit-filter"],
+    queryFn: listUsers,
+  });
+  const userOptions = users.map((u) => ({
+    value: u.id,
+    label: u.display_name ? `${u.display_name}（${u.username}）` : u.username,
+  }));
+
   const { data, isLoading } = useQuery({
     queryKey: ["audit", { action, actor, page }],
     queryFn: () => listAudit({ action, actor_id: actor, page, page_size: 20 }),
@@ -249,23 +273,31 @@ export default function Audit() {
       <PageHeader title="审计日志" subtitle="只读，保留 180 天" />
       <Card size="small" style={{ marginBottom: 16 }} styles={{ body: { padding: 12 } }}>
         <Space wrap>
-          <Input.Search
+          <Select
             allowClear
-            placeholder="操作代码，如 host.create"
-            style={{ width: 240 }}
-            onSearch={(v) => {
-              setAction(v);
+            showSearch
+            optionFilterProp="label"
+            placeholder="全部操作"
+            style={{ width: 220 }}
+            value={action || undefined}
+            onChange={(v) => {
+              setAction(v ?? "");
               setPage(1);
             }}
+            options={actionOptions}
           />
-          <Input.Search
+          <Select
             allowClear
-            placeholder="用户 ID"
+            showSearch
+            optionFilterProp="label"
+            placeholder="全部用户"
             style={{ width: 240 }}
-            onSearch={(v) => {
-              setActor(v);
+            value={actor || undefined}
+            onChange={(v) => {
+              setActor(v ?? "");
               setPage(1);
             }}
+            options={userOptions}
           />
           <Typography.Text type="secondary">审计日志只读，保留 180 天</Typography.Text>
         </Space>
@@ -307,7 +339,7 @@ export default function Audit() {
             width: 260,
             render: (_, r) => {
               const type = (resourceLabels[r.resource_type] ?? r.resource_type) || "";
-              const name = r.resource_name || r.resource_id;
+              const name = readableName(r.resource_name);
               if (!type && !name) return <span style={{ color: "#bfbfbf" }}>—</span>;
               return (
                 <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
@@ -319,7 +351,7 @@ export default function Audit() {
                       {name}
                     </span>
                   ) : (
-                    <span style={{ color: "#bfbfbf" }}>—</span>
+                    <span style={{ color: "#bfbfbf" }}>已删除</span>
                   )}
                 </div>
               );
@@ -327,12 +359,12 @@ export default function Audit() {
           },
           {
             title: "摘要",
-            dataIndex: "summary_json",
-            render: (v: string) => {
-              const text = summaryText(v);
+            render: (_, r) => {
+              const json = r.summary_display || r.summary_json;
+              const text = summaryText(json);
               if (text === "—") return <span style={{ color: "#bfbfbf" }}>—</span>;
               return (
-                <Tooltip title={<pre style={{ margin: 0, whiteSpace: "pre-wrap" }}>{pretty(v)}</pre>}>
+                <Tooltip title={<pre style={{ margin: 0, whiteSpace: "pre-wrap" }}>{pretty(json)}</pre>}>
                   <span style={{ display: "block", ...ellipsisStyle() }}>{text}</span>
                 </Tooltip>
               );

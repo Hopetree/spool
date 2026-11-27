@@ -10,6 +10,7 @@ export interface AuditRecord {
   resource_id: string;
   resource_name: string;
   summary_json: string;
+  summary_display?: string;
   ip: string;
   user_agent: string;
 }
