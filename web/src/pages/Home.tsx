@@ -166,13 +166,9 @@ export default function Home() {
         style={{ marginTop: 16 }}
         title="最近 7 天执行"
         extra={
-          <Space size={16}>
-            <Typography.Text type="secondary">共 {trend.total} 次</Typography.Text>
-            <Typography.Text type="secondary">失败 {trend.failed} 次</Typography.Text>
-            <Typography.Text strong style={{ color: rate !== null && rate < 90 ? "#ff4d4f" : "#52c41a" }}>
-              成功率 {rate === null ? "—" : `${rate}%`}
-            </Typography.Text>
-          </Space>
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+            {trend.buckets[0]?.label} ~ {trend.buckets[trend.buckets.length - 1]?.label}
+          </Typography.Text>
         }
         styles={{ body: { padding: "16px 20px 12px" } }}
       >
