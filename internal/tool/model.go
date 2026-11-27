@@ -217,6 +217,12 @@ func ValidateValues(params []Param, values map[string]string) (map[string]string
 	return out, nil
 }
 
+// NormalizeCategory validates and normalizes a slash-separated category path.
+// It is exported so other asset types (flows) share the same rules.
+func NormalizeCategory(raw string) (string, error) {
+	return normalizeCategory(raw)
+}
+
 func normalizeCategory(raw string) (string, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {

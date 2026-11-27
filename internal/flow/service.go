@@ -19,6 +19,7 @@ import (
 type flowRow struct {
 	ID             string `db:"id"`
 	Name           string `db:"name"`
+	Category       string `db:"category"`
 	Description    string `db:"description"`
 	ParamsJSON     string `db:"params_json"`
 	MaxDurationSec int    `db:"max_duration_sec"`
@@ -55,7 +56,7 @@ type edgeRow struct {
 	ConditionValue string `db:"condition_value"`
 }
 
-const flowSelect = `SELECT f.id, f.name, f.description, f.params_json, f.max_duration_sec, f.enabled,
+const flowSelect = `SELECT f.id, f.name, f.category, f.description, f.params_json, f.max_duration_sec, f.enabled,
 	f.created_at, f.updated_at,
 	(SELECT count(*) FROM flow_nodes n WHERE n.flow_id = f.id AND n.type = 'tool') AS node_count,
 	(SELECT count(*) FROM flow_edges e WHERE e.flow_id = f.id) AS edge_count
@@ -81,7 +82,7 @@ func (r flowRow) toFlow() Flow {
 		_ = json.Unmarshal([]byte(r.ParamsJSON), &params)
 	}
 	return Flow{
-		ID: r.ID, Name: r.Name, Description: r.Description, Params: params,
+		ID: r.ID, Name: r.Name, Category: r.Category, Description: r.Description, Params: params,
 		MaxDurationSec: r.MaxDurationSec, Enabled: r.Enabled,
 		NodeCount: r.NodeCount, EdgeCount: r.EdgeCount,
 		CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
@@ -105,6 +106,12 @@ func (s *Service) List(ctx context.Context, f ListFilter) ([]Flow, int64, error)
 		where = append(where, "(f.name LIKE ? OR f.description LIKE ?)")
 		like := "%" + kw + "%"
 		args = append(args, like, like)
+	}
+	if f.Uncategorized {
+		where = append(where, "f.category = ''")
+	} else if f.Category != "" {
+		where = append(where, "(f.category = ? OR f.category LIKE ?)")
+		args = append(args, f.Category, f.Category+"/%")
 	}
 	if f.Enabled != nil {
 		where = append(where, "f.enabled = ?")
@@ -296,9 +303,9 @@ func (s *Service) Create(ctx context.Context, in Input, actorID string) (*Detail
 	}
 	defer func() { _ = tx.Rollback() }()
 	_, err = tx.ExecContext(ctx, `INSERT INTO flows
-		(id, name, description, params_json, failure_policy, max_duration_sec, enabled, created_by, created_at, updated_at)
-		VALUES (?, ?, ?, ?, 'continue', ?, 1, ?, ?, ?)`,
-		id, in.Name, in.Description, marshalParams(in.Params), in.MaxDurationSec, actorID, now, now)
+		(id, name, category, description, params_json, failure_policy, max_duration_sec, enabled, created_by, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, 'continue', ?, 1, ?, ?, ?)`,
+		id, in.Name, in.Category, in.Description, marshalParams(in.Params), in.MaxDurationSec, actorID, now, now)
 	if err != nil {
 		if ue := uniqueNameError(err); ue != nil {
 			return nil, ue
@@ -330,9 +337,9 @@ func (s *Service) Update(ctx context.Context, id string, in Input) (*Detail, err
 		return nil, fmt.Errorf("begin: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
-	_, err = tx.ExecContext(ctx, `UPDATE flows SET name = ?, description = ?, params_json = ?,
+	_, err = tx.ExecContext(ctx, `UPDATE flows SET name = ?, category = ?, description = ?, params_json = ?,
 		max_duration_sec = ?, updated_at = ? WHERE id = ?`,
-		in.Name, in.Description, marshalParams(in.Params), in.MaxDurationSec, s.nowMs(), id)
+		in.Name, in.Category, in.Description, marshalParams(in.Params), in.MaxDurationSec, s.nowMs(), id)
 	if err != nil {
 		if ue := uniqueNameError(err); ue != nil {
 			return nil, ue
@@ -385,7 +392,7 @@ func (s *Service) Copy(ctx context.Context, id, actorID string) (*Detail, error)
 		return nil, err
 	}
 	in := Input{
-		Name: src.Name + "-copy", Description: src.Description, Params: src.Params,
+		Name: src.Name + "-copy", Category: src.Category, Description: src.Description, Params: src.Params,
 		MaxDurationSec: src.MaxDurationSec,
 	}
 	for _, n := range src.Nodes {
@@ -410,6 +417,22 @@ func (s *Service) Copy(ctx context.Context, id, actorID string) (*Detail, error)
 		in.Name = fmt.Sprintf("%s-%d", base, i)
 	}
 	return s.Create(ctx, in, actorID)
+}
+
+// Categories returns category paths with flow counts.
+func (s *Service) Categories(ctx context.Context) ([]tool.CategoryCount, error) {
+	var rows []struct {
+		Category string `db:"category"`
+		Count    int    `db:"count"`
+	}
+	if err := s.db.SelectContext(ctx, &rows, `SELECT category, count(*) AS count FROM flows GROUP BY category ORDER BY category`); err != nil {
+		return nil, fmt.Errorf("list flow categories: %w", err)
+	}
+	out := make([]tool.CategoryCount, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, tool.CategoryCount{Path: r.Category, Count: r.Count})
+	}
+	return out, nil
 }
 
 // CompileResult is a resolved execution plan plus its parameter split.

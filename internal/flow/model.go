@@ -74,6 +74,7 @@ type Edge struct {
 type Flow struct {
 	ID             string       `json:"id"`
 	Name           string       `json:"name"`
+	Category       string       `json:"category"`
 	Description    string       `json:"description"`
 	Params         []tool.Param `json:"params"`
 	MaxDurationSec int          `json:"max_duration_sec"`
@@ -116,6 +117,7 @@ type EdgeInput struct {
 // Input carries create/update fields.
 type Input struct {
 	Name           string
+	Category       string
 	Description    string
 	Params         []tool.Param
 	MaxDurationSec int
@@ -125,10 +127,12 @@ type Input struct {
 
 // ListFilter narrows flow list queries.
 type ListFilter struct {
-	Keyword  string
-	Enabled  *bool
-	Page     int
-	PageSize int
+	Keyword       string
+	Category      string
+	Uncategorized bool
+	Enabled       *bool
+	Page          int
+	PageSize      int
 }
 
 func validCondition(cond string) bool {
@@ -150,6 +154,11 @@ func validateInput(in *Input) error {
 	if len(in.Description) > 500 {
 		return invalid("描述不能超过 500 个字符")
 	}
+	category, err := tool.NormalizeCategory(in.Category)
+	if err != nil {
+		return invalid(err.Error())
+	}
+	in.Category = category
 	if in.Params == nil {
 		in.Params = []tool.Param{}
 	}

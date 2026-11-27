@@ -1,5 +1,5 @@
 import { request } from "./client";
-import type { ToolParam } from "./tools";
+import type { ToolCategory, ToolParam } from "./tools";
 
 export type FlowNodeType = "start" | "tool";
 export type EdgeCondition =
@@ -40,6 +40,7 @@ export interface FlowEdge {
 export interface FlowSummary {
   id: string;
   name: string;
+  category: string;
   description: string;
   params: ToolParam[];
   max_duration_sec: number;
@@ -77,6 +78,7 @@ export interface FlowEdgeInput {
 
 export interface FlowInput {
   name: string;
+  category: string;
   description: string;
   params: ToolParam[];
   max_duration_sec: number;
@@ -108,8 +110,14 @@ function qs(params: object): string {
   return s ? `?${s}` : "";
 }
 
-export function listFlows(filters: { keyword?: string; enabled?: boolean } = {}): Promise<FlowList> {
+export function listFlows(
+  filters: { keyword?: string; enabled?: boolean; category?: string; uncategorized?: boolean } = {},
+): Promise<FlowList> {
   return request<FlowList>("GET", `/flows${qs({ ...filters, page: 1, page_size: 100 })}`);
+}
+
+export function listFlowCategories(): Promise<ToolCategory[]> {
+  return request<ToolCategory[]>("GET", "/flows/categories");
 }
 
 export function getFlow(id: string): Promise<FlowDetail> {

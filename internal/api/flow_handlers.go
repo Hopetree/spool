@@ -34,6 +34,7 @@ type flowEdgeInput struct {
 
 type flowInput struct {
 	Name           string          `json:"name"`
+	Category       string          `json:"category"`
 	Description    string          `json:"description"`
 	Params         []tool.Param    `json:"params"`
 	MaxDurationSec int             `json:"max_duration_sec"`
@@ -43,7 +44,8 @@ type flowInput struct {
 
 func (in flowInput) toServiceInput() flow.Input {
 	out := flow.Input{
-		Name: in.Name, Description: in.Description, Params: in.Params, MaxDurationSec: in.MaxDurationSec,
+		Name: in.Name, Category: in.Category, Description: in.Description, Params: in.Params,
+		MaxDurationSec: in.MaxDurationSec,
 	}
 	for _, n := range in.Nodes {
 		out.Nodes = append(out.Nodes, flow.NodeInput{
@@ -83,6 +85,12 @@ func listFlowsHandler(d Deps) gin.HandlerFunc {
 		if f.PageSize < 1 || f.PageSize > 100 {
 			f.PageSize = 20
 		}
+		if v := c.Query("category"); v != "" {
+			f.Category = v
+		}
+		if v := c.Query("uncategorized"); v == "true" || v == "1" {
+			f.Uncategorized = true
+		}
 		if v := c.Query("enabled"); v != "" {
 			if b, err := strconv.ParseBool(v); err == nil {
 				f.Enabled = &b
@@ -94,6 +102,17 @@ func listFlowsHandler(d Deps) gin.HandlerFunc {
 			return
 		}
 		ok(c, pageResponse{Items: items, Total: total, Page: f.Page, PageSize: f.PageSize})
+	}
+}
+
+func flowCategoriesHandler(d Deps) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		categories, err := d.Flows.Categories(c.Request.Context())
+		if err != nil {
+			writeFlowError(c, err)
+			return
+		}
+		ok(c, categories)
 	}
 }
 

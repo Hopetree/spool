@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as R
 import {
   App as AntApp,
   Alert,
+  AutoComplete,
   Button,
   Card,
   Drawer,
@@ -33,6 +34,7 @@ import { ApiError } from "../api/client";
 import {
   createFlow,
   getFlow,
+  listFlowCategories,
   updateFlow,
   type EdgeCondition,
   type FlowInput,
@@ -67,6 +69,7 @@ interface ParamForm {
 
 interface FormValues {
   name: string;
+  category?: string;
   description?: string;
   max_duration_sec?: number;
   params?: ParamForm[];
@@ -209,6 +212,10 @@ export default function FlowEditor() {
     queryKey: ["tools", "flow-editor"],
     queryFn: () => listTools({ page: 1, page_size: 100 }),
   });
+  const { data: categories = [] } = useQuery({
+    queryKey: ["flow-categories"],
+    queryFn: listFlowCategories,
+  });
   const tools = (toolPage?.items ?? []).filter((t) => t.enabled);
   const watchedParams = Form.useWatch("params", form) as ParamForm[] | undefined;
   const flowParams = watchedParams ?? [];
@@ -217,6 +224,7 @@ export default function FlowEditor() {
     if (detail) {
       form.setFieldsValue({
         name: detail.name,
+        category: detail.category,
         description: detail.description,
         max_duration_sec: detail.max_duration_sec,
         params: detail.params.map((p) => ({ ...p, optionsText: (p.options ?? []).join(", ") })),
@@ -375,6 +383,7 @@ export default function FlowEditor() {
 
   const buildInput = (values: FormValues): FlowInput => ({
     name: values.name,
+    category: values.category ?? "",
     description: values.description ?? "",
     max_duration_sec: values.max_duration_sec ?? 3600,
     params: (values.params ?? []).map((p) => ({
@@ -476,6 +485,19 @@ export default function FlowEditor() {
           <Space wrap align="start">
             <Form.Item name="name" label="名称" rules={[{ required: true, message: "请输入名称" }]} style={{ width: 240 }}>
               <Input />
+            </Form.Item>
+            <Form.Item
+              name="category"
+              label="分类"
+              tooltip="格式：运维/部署/应用；留空归入默认分类"
+              style={{ width: 260 }}
+            >
+              <AutoComplete
+                allowClear
+                placeholder="如：运维/部署/应用"
+                options={categories.filter((c) => c.path).map((c) => ({ value: c.path }))}
+                filterOption={(input, option) => String(option?.value ?? "").includes(input)}
+              />
             </Form.Item>
             <Form.Item name="max_duration_sec" label="单机最大时长（秒）" style={{ width: 180 }}>
               <InputNumber min={1} max={86400} style={{ width: "100%" }} />

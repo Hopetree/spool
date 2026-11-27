@@ -6,6 +6,7 @@ import {
   Card,
   Descriptions,
   Empty,
+  Input,
   Popconfirm,
   Space,
   Table,
@@ -51,6 +52,7 @@ export default function ExecutionDetail() {
   const qc = useQueryClient();
   const { message } = AntApp.useApp();
   const [selectedHost, setSelectedHost] = useState<string>();
+  const [hostQuery, setHostQuery] = useState("");
   const [selectedNodeID, setSelectedNodeID] = useState<string>();
   const [selectedStepID, setSelectedStepID] = useState<string>();
 
@@ -108,6 +110,23 @@ export default function ExecutionDetail() {
     if (!stepByHost.has(s.host_run_id)) stepByHost.set(s.host_run_id, s);
   });
   const currentHost = data?.host_runs.find((h) => h.id === selectedHost);
+  const hostCounts = {
+    running: (data?.host_runs ?? []).filter((h) => h.status === "queued" || h.status === "running").length,
+    success: (data?.host_runs ?? []).filter((h) => h.status === "success").length,
+    failed: (data?.host_runs ?? []).filter((h) => h.status === "failed").length,
+    cancelled: (data?.host_runs ?? []).filter((h) => h.status === "cancelled").length,
+  };
+  const visibleHosts = (data?.host_runs ?? []).filter(
+    (h) => !hostQuery || h.host_name.toLowerCase().includes(hostQuery.toLowerCase()),
+  );
+  const copyHostNames = async () => {
+    try {
+      await navigator.clipboard.writeText((data?.host_runs ?? []).map((h) => h.host_name).join("\n"));
+      message.success("已复制主机名");
+    } catch {
+      message.error("复制失败");
+    }
+  };
   const backPath =
     data?.kind === "flow" ? "/flows/executions" : data?.kind === "adhoc" ? "/adhoc" : "/tools/executions";
 
@@ -269,7 +288,24 @@ export default function ExecutionDetail() {
           ) : (
             <div style={{ display: "flex", gap: 16, alignItems: "flex-start" }}>
               <div style={{ width: 320, flex: "0 0 320px", maxHeight: 600, overflow: "auto" }}>
-                {data.host_runs.map((h) => {
+                <Space wrap size={12} style={{ marginBottom: 8, fontSize: 12 }}>
+                  <span style={{ color: "#1677ff" }}>执行中 {hostCounts.running}</span>
+                  <span style={{ color: "#52c41a" }}>成功 {hostCounts.success}</span>
+                  <span style={{ color: "#ff4d4f" }}>失败 {hostCounts.failed}</span>
+                  <span style={{ color: "#8c8c8c" }}>取消 {hostCounts.cancelled}</span>
+                </Space>
+                <Space.Compact style={{ width: "100%", marginBottom: 8 }}>
+                  <Input
+                    allowClear
+                    size="small"
+                    placeholder="搜索主机"
+                    onChange={(e) => setHostQuery(e.target.value)}
+                  />
+                  <Button size="small" onClick={copyHostNames}>
+                    复制主机名
+                  </Button>
+                </Space.Compact>
+                {visibleHosts.map((h) => {
                   const step = stepByHost.get(h.id);
                   const selected = h.id === selectedHost;
                   return (

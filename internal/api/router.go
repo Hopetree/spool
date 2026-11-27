@@ -115,6 +115,7 @@ func NewRouter(d Deps) *gin.Engine {
 	authed.GET("/tools/:id/versions/:no", toolVersionHandler(d))
 	authed.GET("/tools/:id/references", toolReferencesHandler(d))
 	authed.GET("/flows", listFlowsHandler(d))
+	authed.GET("/flows/categories", flowCategoriesHandler(d))
 	authed.GET("/flows/:id", getFlowHandler(d))
 	authed.GET("/schedules", listSchedulesHandler(d))
 	authed.GET("/schedules/:id", getScheduleHandler(d))

@@ -50,6 +50,7 @@ export default function ExecutionTable({
   const navigate = useNavigate();
   const [status, setStatus] = useState<string>();
   const [keyword, setKeyword] = useState("");
+  const [range, setRange] = useState("all");
 
   const { data: schedulePage } = useQuery({
     queryKey: ["schedules", "names"],
@@ -59,7 +60,16 @@ export default function ExecutionTable({
   const scheduleName = (id: string) => schedulePage?.items.find((s) => s.id === id)?.name ?? id;
 
   const { data, isLoading } = useQuery({
-    queryKey: ["executions", kind ?? "", refID ?? "", scheduleID ?? "", scheduledOnly ? "scheduled" : "", status, keyword],
+    queryKey: [
+      "executions",
+      kind ?? "",
+      refID ?? "",
+      scheduleID ?? "",
+      scheduledOnly ? "scheduled" : "",
+      status,
+      keyword,
+      range,
+    ],
     queryFn: () =>
       listExecutions({
         kind,
@@ -68,6 +78,7 @@ export default function ExecutionTable({
         scheduled: scheduledOnly,
         status,
         keyword,
+        from: range === "all" ? undefined : dayjs().subtract(Number(range), "hour").valueOf(),
         page: 1,
         page_size: 100,
       }),
@@ -84,10 +95,21 @@ export default function ExecutionTable({
           <Select
             allowClear
             placeholder="状态"
-            style={{ width: 140 }}
+            style={{ width: 130 }}
             value={status}
             onChange={setStatus}
             options={statusOptions}
+          />
+          <Select
+            style={{ width: 130 }}
+            value={range}
+            onChange={setRange}
+            options={[
+              { value: "all", label: "全部时间" },
+              { value: "24", label: "近 24 小时" },
+              { value: "168", label: "近 7 天" },
+              { value: "720", label: "近 30 天" },
+            ]}
           />
           <Input.Search allowClear placeholder="名称关键字" style={{ width: 240 }} onSearch={setKeyword} />
         </Space>

@@ -9,7 +9,7 @@ import (
 
 func flowBody(name, toolA, toolB string) map[string]any {
 	return map[string]any{
-		"name": name, "description": "flow",
+		"name": name, "category": "运维/巡检", "description": "flow",
 		"params": []map[string]any{
 			{"name": "ENV", "type": "string", "default": "prod"},
 			{"name": "SECRET", "type": "string", "sensitive": true},
@@ -71,6 +71,18 @@ func TestFlowCRUDApi(t *testing.T) {
 	id := created["id"].(string)
 	if created["node_count"] != float64(2) || created["edge_count"] != float64(2) {
 		t.Fatalf("created = %+v", created)
+	}
+	if created["category"] != "运维/巡检" {
+		t.Fatalf("created category = %+v", created["category"])
+	}
+
+	w = e.do(t, http.MethodGet, "/api/v1/flows/categories", nil, admin)
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "运维/巡检") {
+		t.Fatalf("flow categories status=%d body=%s", w.Code, w.Body.String())
+	}
+	w = e.do(t, http.MethodGet, "/api/v1/flows?category=运维", nil, admin)
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "deploy") {
+		t.Fatalf("flow category filter status=%d body=%s", w.Code, w.Body.String())
 	}
 
 	w = e.do(t, http.MethodGet, "/api/v1/flows", nil, admin)

@@ -4,11 +4,11 @@ import {
   Button,
   Card,
   Descriptions,
-  Popconfirm,
+  Dropdown,
   Space,
-  Switch,
   Tag,
 } from "antd";
+import { DownOutlined } from "@ant-design/icons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams } from "react-router-dom";
 import { ApiError } from "../api/client";
@@ -23,7 +23,7 @@ export default function FlowDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
   const qc = useQueryClient();
-  const { message } = AntApp.useApp();
+  const { message, modal } = AntApp.useApp();
   const user = useAuthStore((s) => s.user);
   const isAdmin = user?.role === "admin";
   const canRun = isAdmin || user?.role === "operator";
@@ -78,25 +78,40 @@ export default function FlowDetail() {
         crumbs={[{ title: "流程", to: "/flows" }, { title: "流程详情" }]}
         extra={
           <>
-            {canRun && <Button onClick={() => setExecOpen(true)}>执行</Button>}
-            {isAdmin && <Button onClick={() => navigate(`/flows/${id}/edit`)}>编辑</Button>}
-            {isAdmin && (
-              <Button loading={clone.isPending} onClick={() => clone.mutate()}>
-                克隆
+            {canRun && (
+              <Button type="primary" onClick={() => setExecOpen(true)}>
+                执行
               </Button>
             )}
+            {isAdmin && <Button onClick={() => navigate(`/flows/${id}/edit`)}>编辑</Button>}
             {isAdmin && (
-              <Space size={4}>
-                <span>启用</span>
-                <Switch checked={detail?.enabled} loading={toggle.isPending} onChange={(v) => toggle.mutate(v)} />
-              </Space>
-            )}
-            {isAdmin && (
-              <Popconfirm title="确认删除该流程？" onConfirm={() => remove.mutate()}>
-                <Button danger loading={remove.isPending}>
-                  删除流程
+              <Dropdown
+                trigger={["click"]}
+                menu={{
+                  items: [
+                    { key: "copy", label: "克隆" },
+                    { key: "enabled", label: detail?.enabled ? "停用" : "启用" },
+                    { type: "divider" },
+                    { key: "delete", label: "删除流程", danger: true },
+                  ],
+                  onClick: ({ key }) => {
+                    if (key === "copy") clone.mutate();
+                    if (key === "enabled") toggle.mutate(!detail?.enabled);
+                    if (key === "delete") {
+                      modal.confirm({
+                        title: "确认删除该流程？",
+                        okText: "删除",
+                        okButtonProps: { danger: true },
+                        onOk: () => remove.mutate(),
+                      });
+                    }
+                  },
+                }}
+              >
+                <Button>
+                  更多 <DownOutlined />
                 </Button>
-              </Popconfirm>
+              </Dropdown>
             )}
           </>
         }
@@ -108,6 +123,7 @@ export default function FlowDetail() {
             column={3}
             size="small"
             items={[
+              { key: "category", label: "分类", children: detail.category || "默认" },
               { key: "desc", label: "描述", children: detail.description || "—" },
               { key: "duration", label: "单机最大时长", children: `${detail.max_duration_sec}s` },
               {

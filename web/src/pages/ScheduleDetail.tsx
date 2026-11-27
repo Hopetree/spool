@@ -3,11 +3,11 @@ import {
   Button,
   Card,
   Descriptions,
-  Popconfirm,
+  Dropdown,
   Space,
-  Switch,
   Tag,
 } from "antd";
+import { DownOutlined } from "@ant-design/icons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams } from "react-router-dom";
 import dayjs from "dayjs";
@@ -22,6 +22,7 @@ import {
 } from "../api/schedules";
 import ExecutionTable from "../components/ExecutionTable";
 import PageHeader from "../components/PageHeader";
+import { describeCron } from "../utils/cron";
 import { useAuthStore } from "../stores/auth";
 
 const policyLabel: Record<string, string> = { skip: "上次未完成则跳过", queue: "排队执行" };
@@ -31,7 +32,7 @@ export default function ScheduleDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
   const qc = useQueryClient();
-  const { message } = AntApp.useApp();
+  const { message, modal } = AntApp.useApp();
   const user = useAuthStore((s) => s.user);
   const isAdmin = user?.role === "admin";
   const canRun = isAdmin || user?.role === "operator";
@@ -94,28 +95,46 @@ export default function ScheduleDetail() {
       <PageHeader
         back={{ label: "返回列表", onClick: () => navigate("/schedules") }}
         title={detail?.name ?? "定时任务"}
-        subtitle={detail?.cron_expr}
+        subtitle={
+          detail
+            ? `${detail.cron_expr}${describeCron(detail.cron_expr) ? ` · ${describeCron(detail.cron_expr)}` : ""}`
+            : undefined
+        }
         crumbs={[{ title: "自动化", to: "/schedules" }, { title: "定时任务详情" }]}
         extra={
           <>
             {canRun && (
-              <Button loading={run.isPending} onClick={() => run.mutate()}>
+              <Button type="primary" loading={run.isPending} onClick={() => run.mutate()}>
                 立即执行
               </Button>
             )}
             {isAdmin && <Button onClick={() => navigate(`/schedules/${id}/edit`)}>编辑</Button>}
             {isAdmin && (
-              <Space size={4}>
-                <span>启用</span>
-                <Switch checked={detail?.enabled} loading={toggle.isPending} onChange={(v) => toggle.mutate(v)} />
-              </Space>
-            )}
-            {isAdmin && (
-              <Popconfirm title="确认删除该定时任务？" onConfirm={() => remove.mutate()}>
-                <Button danger loading={remove.isPending}>
-                  删除任务
+              <Dropdown
+                trigger={["click"]}
+                menu={{
+                  items: [
+                    { key: "enabled", label: detail?.enabled ? "停用" : "启用" },
+                    { type: "divider" },
+                    { key: "delete", label: "删除任务", danger: true },
+                  ],
+                  onClick: ({ key }) => {
+                    if (key === "enabled") toggle.mutate(!detail?.enabled);
+                    if (key === "delete") {
+                      modal.confirm({
+                        title: "确认删除该定时任务？",
+                        okText: "删除",
+                        okButtonProps: { danger: true },
+                        onOk: () => remove.mutate(),
+                      });
+                    }
+                  },
+                }}
+              >
+                <Button>
+                  更多 <DownOutlined />
                 </Button>
-              </Popconfirm>
+              </Dropdown>
             )}
           </>
         }

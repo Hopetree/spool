@@ -4,16 +4,17 @@ import {
   Button,
   Card,
   Descriptions,
+  Dropdown,
   Modal,
   Popconfirm,
   Select,
   Space,
-  Switch,
   Table,
   Tabs,
   Tag,
   Typography,
 } from "antd";
+import { DownOutlined } from "@ant-design/icons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams } from "react-router-dom";
 import dayjs from "dayjs";
@@ -43,7 +44,7 @@ export default function ToolDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
   const qc = useQueryClient();
-  const { message } = AntApp.useApp();
+  const { message, modal } = AntApp.useApp();
   const user = useAuthStore((s) => s.user);
   const isAdmin = user?.role === "admin";
   const canRun = isAdmin || user?.role === "operator";
@@ -325,29 +326,41 @@ export default function ToolDetail() {
         crumbs={[{ title: "工具", to: "/tools" }, { title: "工具详情" }]}
         extra={
           <>
-            {canRun && <Button onClick={() => setExecOpen(true)}>执行</Button>}
-            {isAdmin && <Button onClick={() => navigate(`/tools/${id}/edit`)}>编辑</Button>}
-            {isAdmin && (
-              <Button loading={clone.isPending} onClick={() => clone.mutate()}>
-                克隆
+            {canRun && (
+              <Button type="primary" onClick={() => setExecOpen(true)}>
+                执行
               </Button>
             )}
+            {isAdmin && <Button onClick={() => navigate(`/tools/${id}/edit`)}>编辑</Button>}
             {isAdmin && (
-              <Space size={4}>
-                <span>启用</span>
-                <Switch
-                  checked={detail?.enabled}
-                  loading={toggleEnabled.isPending}
-                  onChange={(v) => toggleEnabled.mutate(v)}
-                />
-              </Space>
-            )}
-            {isAdmin && (
-              <Popconfirm title="确认删除该工具？" onConfirm={() => removeTool.mutate()}>
-                <Button danger loading={removeTool.isPending}>
-                  删除工具
+              <Dropdown
+                trigger={["click"]}
+                menu={{
+                  items: [
+                    { key: "copy", label: "克隆" },
+                    { key: "enabled", label: detail?.enabled ? "停用" : "启用" },
+                    { type: "divider" },
+                    { key: "delete", label: "删除工具", danger: true },
+                  ],
+                  onClick: ({ key }) => {
+                    if (key === "copy") clone.mutate();
+                    if (key === "enabled") toggleEnabled.mutate(!detail?.enabled);
+                    if (key === "delete") {
+                      modal.confirm({
+                        title: "确认删除该工具？",
+                        content: "已被流程、定时任务或执行历史使用时无法删除，只能停用。",
+                        okText: "删除",
+                        okButtonProps: { danger: true },
+                        onOk: () => removeTool.mutate(),
+                      });
+                    }
+                  },
+                }}
+              >
+                <Button>
+                  更多 <DownOutlined />
                 </Button>
-              </Popconfirm>
+              </Dropdown>
             )}
           </>
         }

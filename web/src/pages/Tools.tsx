@@ -1,6 +1,6 @@
-import { useMemo, useState } from "react";
-import { App as AntApp, Button, Card, Input, Select, Space, Switch, Table, Tag, Tree } from "antd";
-import type { DataNode } from "antd/es/tree";
+import { useEffect, useState } from "react";
+import { AppstoreOutlined, CodeOutlined, UnorderedListOutlined } from "@ant-design/icons";
+import { App as AntApp, Button, Card, Col, Empty, Input, Pagination, Row, Segmented, Select, Space, Switch, Table, Tag } from "antd";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "react-router-dom";
 import dayjs from "dayjs";
@@ -11,74 +11,13 @@ import {
   listToolCategories,
   listTools,
   setToolEnabled,
-  type ToolCategory,
   type ToolSummary,
 } from "../api/tools";
 import ExecuteToolModal from "../components/ExecuteToolModal";
+import CategoryTree from "../components/CategoryTree";
 import PageHeader from "../components/PageHeader";
 import RowActions from "../components/RowActions";
 import { useAuthStore } from "../stores/auth";
-
-interface CatNode {
-  path: string;
-  name: string;
-  count: number;
-  children: CatNode[];
-}
-
-function buildTree(items: ToolCategory[]): CatNode[] {
-  const roots: CatNode[] = [];
-  for (const item of items) {
-    if (!item.path) continue;
-    const parts = item.path.split("/");
-    let level = roots;
-    let acc = "";
-    let node: CatNode | undefined;
-    for (const part of parts) {
-      acc = acc ? `${acc}/${part}` : part;
-      node = level.find((n) => n.path === acc);
-      if (!node) {
-        node = { path: acc, name: part, count: 0, children: [] };
-        level.push(node);
-      }
-      level = node.children;
-    }
-    if (node) node.count += item.count;
-  }
-  const aggregate = (node: CatNode): number => {
-    node.count += node.children.reduce((sum, child) => sum + aggregate(child), 0);
-    return node.count;
-  };
-  roots.forEach(aggregate);
-  roots.sort((a, b) => a.name.localeCompare(b.name));
-  return roots;
-}
-
-function filterTree(nodes: CatNode[], keyword: string): CatNode[] {
-  const q = keyword.trim().toLowerCase();
-  if (!q) return nodes;
-  const out: CatNode[] = [];
-  for (const node of nodes) {
-    const children = filterTree(node.children, keyword);
-    if (node.name.toLowerCase().includes(q) || node.path.toLowerCase().includes(q) || children.length > 0) {
-      out.push({ ...node, children });
-    }
-  }
-  return out;
-}
-
-function toTreeData(nodes: CatNode[]): DataNode[] {
-  return nodes.map((n) => ({
-    key: n.path,
-    title: (
-      <span>
-        {n.name}
-        <span style={{ color: "#8c8c8c" }}> ({n.count})</span>
-      </span>
-    ),
-    children: n.children.length ? toTreeData(n.children) : undefined,
-  }));
-}
 
 export default function Tools() {
   const qc = useQueryClient();
@@ -91,8 +30,12 @@ export default function Tools() {
   const [keyword, setKeyword] = useState("");
   const [enabled, setEnabled] = useState<string>();
   const [selected, setSelected] = useState<string>("all");
-  const [search, setSearch] = useState("");
+  const [view, setView] = useState<"list" | "card">(() =>
+    localStorage.getItem("spool.tools.view") === "card" ? "card" : "list",
+  );
   const [execTool, setExecTool] = useState<ToolSummary | null>(null);
+  const [cardPage, setCardPage] = useState(1);
+  const cardPageSize = 9;
 
   const { data: categories = [] } = useQuery({ queryKey: ["tool-categories"], queryFn: listToolCategories });
 
@@ -112,33 +55,11 @@ export default function Tools() {
       }),
   });
   const tools = data?.items ?? [];
+  const pagedTools = tools.slice((cardPage - 1) * cardPageSize, cardPage * cardPageSize);
 
-  const total = categories.reduce((sum, c) => sum + c.count, 0);
-  const uncategorized = categories.find((c) => c.path === "")?.count ?? 0;
-  const treeData: DataNode[] = useMemo(() => {
-    const categoryNodes = toTreeData(filterTree(buildTree(categories), search));
-    return [
-      {
-        key: "all",
-        title: (
-          <span>
-            全部工具<span style={{ color: "#8c8c8c" }}> ({total})</span>
-          </span>
-        ),
-        children: [
-          {
-            key: "__default__",
-            title: (
-              <span>
-                默认<span style={{ color: "#8c8c8c" }}> ({uncategorized})</span>
-              </span>
-            ),
-          },
-          ...categoryNodes,
-        ],
-      },
-    ];
-  }, [categories, search, total, uncategorized]);
+  useEffect(() => {
+    setCardPage(1);
+  }, [keyword, enabled, selected]);
 
   const toggle = useMutation({
     mutationFn: (v: { id: string; value: boolean }) => setToolEnabled(v.id, v.value),
@@ -185,35 +106,46 @@ export default function Tools() {
       />
 
       <div style={{ display: "flex", gap: 16, alignItems: "flex-start" }}>
-        <Card size="small" style={{ width: 260, flex: "0 0 260px" }} title="分类">
-          <Input.Search allowClear placeholder="搜索分类" style={{ marginBottom: 8 }} onChange={(e) => setSearch(e.target.value)} />
-          <Tree
-            treeData={treeData}
-            defaultExpandAll
-            blockNode
-            selectedKeys={[selected]}
-            onSelect={(keys) => setSelected(String(keys[0] ?? "all"))}
-          />
-        </Card>
+        <CategoryTree
+          allLabel="全部工具"
+          items={categories}
+          selected={selected}
+          onSelect={setSelected}
+        />
 
         <div style={{ flex: 1, minWidth: 0 }}>
           <Card size="small" style={{ marginBottom: 16 }} styles={{ body: { padding: 12 } }}>
-            <Space wrap>
-              <Input.Search allowClear placeholder="名称或描述" style={{ width: 220 }} onSearch={setKeyword} />
-              <Select
-                allowClear
-                placeholder="状态"
-                style={{ width: 110 }}
-                value={enabled}
-                onChange={setEnabled}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+              <Space wrap>
+                <Input.Search allowClear placeholder="名称或描述" style={{ width: 220 }} onSearch={setKeyword} />
+                <Select
+                  allowClear
+                  placeholder="状态"
+                  style={{ width: 110 }}
+                  value={enabled}
+                  onChange={setEnabled}
+                  options={[
+                    { value: "true", label: "启用" },
+                    { value: "false", label: "停用" },
+                  ]}
+                />
+              </Space>
+              <Segmented
+                value={view}
+                onChange={(value) => {
+                  const next = value as "list" | "card";
+                  setView(next);
+                  localStorage.setItem("spool.tools.view", next);
+                }}
                 options={[
-                  { value: "true", label: "启用" },
-                  { value: "false", label: "停用" },
+                  { value: "list", label: "列表", icon: <UnorderedListOutlined /> },
+                  { value: "card", label: "卡片", icon: <AppstoreOutlined /> },
                 ]}
               />
-            </Space>
+            </div>
           </Card>
 
+          {view === "list" ? (
           <Table<ToolSummary>
           rowKey="id"
           size="small"
@@ -295,9 +227,109 @@ export default function Tools() {
               ),
             },
           ]}
-        />
-      </div>
-
+          />
+          ) : (
+            <Row gutter={[12, 12]}>
+              {pagedTools.map((tool) => (
+                <Col key={tool.id} xs={24} sm={12} xl={8}>
+                  <Card
+                    size="small"
+                    hoverable
+                    styles={{
+                      body: {
+                        padding: 16,
+                        display: "flex",
+                        flexDirection: "column",
+                        height: "100%",
+                        boxSizing: "border-box",
+                      },
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
+                      <span
+                        style={{
+                          width: 38,
+                          height: 38,
+                          borderRadius: 10,
+                          flex: "none",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          fontSize: 18,
+                          color: tool.type === "python" ? "#1677ff" : "#52c41a",
+                          background: tool.type === "python" ? "#e6f4ff" : "#f6ffed",
+                        }}
+                      >
+                        <CodeOutlined />
+                      </span>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <Link to={`/tools/${tool.id}`} style={{ fontWeight: 600 }}>
+                          {tool.name}
+                        </Link>
+                        <div
+                          style={{
+                            fontSize: 12,
+                            color: "#8c8c8c",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          v{tool.version_no} · {tool.category || "默认"}
+                        </div>
+                      </div>
+                      {!tool.enabled && <Tag>停用</Tag>}
+                    </div>
+                    <div
+                      style={{
+                        fontSize: 12,
+                        color: "#595959",
+                        marginTop: 10,
+                        lineHeight: 1.6,
+                        height: 38,
+                        overflow: "hidden",
+                      }}
+                    >
+                      {tool.description || "—"}
+                    </div>
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        marginTop: 12,
+                      }}
+                    >
+                      <Tag color={tool.type === "python" ? "blue" : "geekblue"}>{tool.type}</Tag>
+                      {canRun && (
+                        <Button size="small" onClick={() => setExecTool(tool)}>
+                          执行
+                        </Button>
+                      )}
+                    </div>
+                  </Card>
+                </Col>
+              ))}
+              {tools.length === 0 && !isLoading && (
+                <Col span={24}>
+                  <Empty description="没有匹配的工具" />
+                </Col>
+              )}
+            </Row>
+          )}
+          {view === "card" && tools.length > cardPageSize && (
+            <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 12 }}>
+              <Pagination
+                size="small"
+                current={cardPage}
+                pageSize={cardPageSize}
+                total={tools.length}
+                showSizeChanger={false}
+                onChange={setCardPage}
+              />
+            </div>
+          )}
+        </div>
       </div>
 
       <ExecuteToolModal toolID={execTool?.id ?? null} open={!!execTool} onClose={() => setExecTool(null)} />

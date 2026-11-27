@@ -12,6 +12,8 @@ import {
   type Schedule,
 } from "../api/schedules";
 import PageHeader from "../components/PageHeader";
+import { describeCron } from "../utils/cron";
+import { relativeFuture } from "../utils/time";
 import RowActions from "../components/RowActions";
 import { useAuthStore } from "../stores/auth";
 
@@ -113,12 +115,30 @@ export default function Schedules() {
               </Space>
             ),
           },
-          { title: "cron", dataIndex: "cron_expr", width: 140 },
+          {
+            title: "cron",
+            dataIndex: "cron_expr",
+            width: 180,
+            render: (v: string) => (
+              <div>
+                <code style={{ fontSize: 12 }}>{v}</code>
+                <div style={{ fontSize: 11, color: "#8c8c8c" }}>{describeCron(v)}</div>
+              </div>
+            ),
+          },
           {
             title: "下次运行",
             dataIndex: "next_run_at",
-            width: 170,
-            render: (v: number | null) => (v ? dayjs(v).format("YYYY-MM-DD HH:mm") : "—"),
+            width: 180,
+            render: (v: number | null) =>
+              v ? (
+                <div>
+                  {dayjs(v).format("YYYY-MM-DD HH:mm")}
+                  <div style={{ fontSize: 11, color: "#8c8c8c" }}>{relativeFuture(v)}</div>
+                </div>
+              ) : (
+                "—"
+              ),
           },
           {
             title: "上次运行",

@@ -28,12 +28,20 @@ export default function AdhocHistoryPanel({ pageSize = 6 }: { pageSize?: number 
   const navigate = useNavigate();
   const [status, setStatus] = useState<string>();
   const [keyword, setKeyword] = useState("");
+  const [range, setRange] = useState("all");
   const [page, setPage] = useState(1);
 
   const { data, isLoading } = useQuery({
-    queryKey: ["executions", "adhoc-panel", status ?? "", keyword, page],
+    queryKey: ["executions", "adhoc-panel", status ?? "", keyword, range, page],
     queryFn: () =>
-      listExecutions({ kind: "adhoc", status, keyword, page, page_size: pageSize }),
+      listExecutions({
+        kind: "adhoc",
+        status,
+        keyword,
+        from: range === "all" ? undefined : dayjs().subtract(Number(range), "hour").valueOf(),
+        page,
+        page_size: pageSize,
+      }),
     refetchInterval: (query) => {
       const items = query.state.data?.items ?? [];
       return items.some((item) => item.status === "queued" || item.status === "running") ? 3000 : 15000;
@@ -60,11 +68,23 @@ export default function AdhocHistoryPanel({ pageSize = 6 }: { pageSize?: number 
           onChange={(v) => reset(() => setStatus(v))}
           options={statusOptions}
         />
+        <Select
+          size="small"
+          style={{ width: 110 }}
+          value={range}
+          onChange={(v) => reset(() => setRange(v))}
+          options={[
+            { value: "all", label: "全部时间" },
+            { value: "24", label: "近 24 小时" },
+            { value: "168", label: "近 7 天" },
+            { value: "720", label: "近 30 天" },
+          ]}
+        />
         <Input.Search
           size="small"
           allowClear
           placeholder="搜索命令"
-          style={{ width: 240 }}
+          style={{ width: 200 }}
           onSearch={(v) => reset(() => setKeyword(v))}
         />
       </Space>

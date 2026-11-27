@@ -30,6 +30,7 @@ import {
 } from "../api/schedules";
 import { getTool, listTools, type ToolParam } from "../api/tools";
 import PageHeader from "../components/PageHeader";
+import { describeCron } from "../utils/cron";
 import { useAuthStore } from "../stores/auth";
 
 interface FormValues {
@@ -247,7 +248,13 @@ export default function ScheduleEditor() {
 
         <Card title="调度" style={{ marginBottom: 16 }}>
           <Space wrap align="start">
-            <Form.Item name="cron_expr" label="cron 表达式（5 段）" rules={[{ required: true, message: "请输入 cron" }]} style={{ width: 260 }}>
+            <Form.Item
+              name="cron_expr"
+              label="cron 表达式（5 段）"
+              rules={[{ required: true, message: "请输入 cron" }]}
+              extra={cronExpr ? describeCron(cronExpr) : undefined}
+              style={{ width: 260 }}
+            >
               <Input placeholder="0 2 * * *" />
             </Form.Item>
             <Form.Item label="常用周期" style={{ width: 160 }}>

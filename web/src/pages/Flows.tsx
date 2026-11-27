@@ -1,10 +1,18 @@
 import { useState } from "react";
-import { App as AntApp, Button, Card, Input, Select, Space, Switch, Table } from "antd";
+import { App as AntApp, Button, Card, Input, Select, Space, Switch, Table, Tag } from "antd";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "react-router-dom";
 import dayjs from "dayjs";
 import { ApiError } from "../api/client";
-import { copyFlow, deleteFlow, listFlows, setFlowEnabled, type FlowSummary } from "../api/flows";
+import {
+  copyFlow,
+  deleteFlow,
+  listFlowCategories,
+  listFlows,
+  setFlowEnabled,
+  type FlowSummary,
+} from "../api/flows";
+import CategoryTree from "../components/CategoryTree";
 import ExecuteFlowModal from "../components/ExecuteFlowModal";
 import PageHeader from "../components/PageHeader";
 import RowActions from "../components/RowActions";
@@ -20,12 +28,19 @@ export default function Flows() {
 
   const [keyword, setKeyword] = useState("");
   const [enabled, setEnabled] = useState<string>();
+  const [selected, setSelected] = useState("all");
   const [execFlow, setExecFlow] = useState<FlowSummary | null>(null);
 
+  const { data: categories = [] } = useQuery({ queryKey: ["flow-categories"], queryFn: listFlowCategories });
   const { data, isLoading } = useQuery({
-    queryKey: ["flows", { keyword, enabled }],
+    queryKey: ["flows", { keyword, enabled, selected }],
     queryFn: () =>
-      listFlows({ keyword, enabled: enabled === "true" ? true : enabled === "false" ? false : undefined }),
+      listFlows({
+        keyword,
+        enabled: enabled === "true" ? true : enabled === "false" ? false : undefined,
+        category: selected !== "all" && selected !== "__default__" ? selected : undefined,
+        uncategorized: selected === "__default__",
+      }),
   });
   const flows = data?.items ?? [];
 
@@ -70,30 +85,44 @@ export default function Flows() {
         }
       />
 
-      <Card size="small" style={{ marginBottom: 16 }} styles={{ body: { padding: 12 } }}>
-        <Space wrap>
-          <Input.Search allowClear placeholder="名称或描述" style={{ width: 220 }} onSearch={setKeyword} />
-          <Select
-            allowClear
-            placeholder="状态"
-            style={{ width: 110 }}
-            value={enabled}
-            onChange={setEnabled}
-            options={[
-              { value: "true", label: "启用" },
-              { value: "false", label: "停用" },
-            ]}
-          />
-        </Space>
-      </Card>
+      <div style={{ display: "flex", gap: 16, alignItems: "flex-start" }}>
+        <CategoryTree allLabel="全部流程" items={categories} selected={selected} onSelect={setSelected} />
 
-      <Table<FlowSummary>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <Card size="small" style={{ marginBottom: 16 }} styles={{ body: { padding: 12 } }}>
+            <Space wrap>
+              <Input.Search allowClear placeholder="名称或描述" style={{ width: 220 }} onSearch={setKeyword} />
+              <Select
+                allowClear
+                placeholder="状态"
+                style={{ width: 110 }}
+                value={enabled}
+                onChange={setEnabled}
+                options={[
+                  { value: "true", label: "启用" },
+                  { value: "false", label: "停用" },
+                ]}
+              />
+            </Space>
+          </Card>
+
+          <Table<FlowSummary>
         rowKey="id"
         size="small"
         loading={isLoading}
         dataSource={flows}
         columns={[
-          { title: "名称", render: (_, r) => <Link to={`/flows/${r.id}`}>{r.name}</Link> },
+          {
+            title: "名称",
+            render: (_, r) => <Link to={`/flows/${r.id}`}>{r.name}</Link>,
+          },
+          {
+            title: "分类",
+            dataIndex: "category",
+            width: 160,
+            ellipsis: true,
+            render: (v: string) => (v ? <Tag>{v}</Tag> : <Tag>默认</Tag>),
+          },
           { title: "工具节点", dataIndex: "node_count", width: 90 },
           { title: "连线", dataIndex: "edge_count", width: 80 },
           {
@@ -143,7 +172,9 @@ export default function Flows() {
             ),
           },
         ]}
-      />
+          />
+        </div>
+      </div>
 
       <ExecuteFlowModal flowID={execFlow?.id ?? null} open={!!execFlow} onClose={() => setExecFlow(null)} />
     </div>
